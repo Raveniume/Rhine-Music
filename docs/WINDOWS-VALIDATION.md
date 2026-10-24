@@ -8,7 +8,7 @@
 
 runtimeChecked=true 适用于 Windows 便携程序进程、主 WebView 窗口、独立任务栏歌词 WebView 的合成歌词可见／隐藏链路和本机任务栏坐标计算；任务栏回归报告为 `artifacts/desktop-ui/taskbar-lyrics-report.json`，窗口在本机测试中为约 482×43、从 x=220 开始。runtimeChecked=false 适用于真实账号授权、登录后歌单、真实播放、任务栏多显示器／DPI／Explorer 重启、SMTC 和 macOS。冷启动面板检查与任务栏回归均使用独立临时数据目录，不读取私人库或已有凭据。便携目录为 `release/Rhine-Music-Windows`。
 
-本轮独立便携包为 `release/Rhine-Music-Windows-20261025`，共 6,850 个文件、286,188,021 字节；`Rhine Music.exe` SHA-256：`F9C57EAA8211627AB1D877591BC8727CB9EF3F757568116E2C5D29058A867391`。便携包及运行缓存保留在本机，不进入源码提交。
+本轮独立便携包为 `release/Rhine-Music-Windows-20261025`，共 6,850 个文件、286,188,404 字节；`Rhine Music.exe` SHA-256：`F9C57EAA8211627AB1D877591BC8727CB9EF3F757568116E2C5D29058A867391`。便携包及运行缓存保留在本机，不进入源码提交。
 
 ## 最新检查 · 2026-10-10 Perf21
 
