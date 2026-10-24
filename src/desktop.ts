@@ -6,6 +6,7 @@ export { normalizeWindowDisplayMode } from './window-display-mode';
 export type { WindowDisplayMode } from './window-display-mode';
 
 export const isDesktop = () => "__TAURI_INTERNALS__" in window;
+export const consumeFirstLaunch = async () => isDesktop() ? invoke<boolean>('desktop_consume_first_launch') : false;
 export type CloseBehavior = 'ask' | 'tray' | 'exit';
 let closeBehavior: CloseBehavior = 'ask';
 export const getCloseBehavior = () => closeBehavior;

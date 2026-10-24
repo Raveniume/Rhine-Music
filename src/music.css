@@ -1,4 +1,6 @@
 .music-app {
+  --music-content-left: clamp(40px, 4vw, 72px);
+  --music-content-top: clamp(132px, 14vh, 176px);
   --ink: #232722;
   --muted: #74786f;
   --line: rgba(42, 49, 42, 0.18);
@@ -9,7 +11,10 @@
   --veil: rgba(236, 233, 225, 0.72);
   color: var(--ink);
   font-family: MiSans, system-ui, sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
 }
+.music-app input, .music-app textarea, .music-app [contenteditable="true"] { user-select: text; -webkit-user-select: text; }
 #stage.music-app {
   inset: 0;
   left: 0;
@@ -111,8 +116,8 @@
 .music-header {
   position: absolute;
   z-index: 6;
-  left: 40px;
-  right: 40px;
+  left: var(--music-content-left);
+  right: var(--music-content-left);
   top: 33px;
   display: flex;
   justify-content: space-between;

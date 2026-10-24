@@ -6,7 +6,7 @@
 
 下载 [Windows x64 安装 EXE](https://github.com/DuoJiuBetter/Rhine-Music-Windows/releases/download/v0.2.0-public-preview/Rhine-Music-Windows-0.2.0-public-preview-x64-Setup.exe)，退出旧版后双击安装。默认当前用户安装，保留账号、个人音乐和设置。安装器提供开始菜单／桌面快捷方式以及 Windows 设置卸载入口。GitHub 自动生成的 Source code 压缩包供开发者使用，不是可运行的软件。
 
-本次应用内版本为 0.4.1-preview-model-loop-1-public。先前 Perf21 文档仅代表历史版本，不能用其验证记录代替本版验收。
+本次应用内版本为 0.4.2。先前 Perf21 文档仅代表历史版本，不能用其验证记录代替本版验收。
 
 ## 音乐、歌单与队列
 

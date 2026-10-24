@@ -26,6 +26,18 @@ await fs.copyFile('README.original.md', path.join(output, 'README.original.md'))
 await fs.mkdir(path.join(output, 'docs'), { recursive: true });
 for (const [source, target] of extraNotices) await fs.copyFile(source, path.join(output, target));
 await fs.copyFile('docs/WINDOWS-VALIDATION.md', path.join(output, 'docs/WINDOWS-VALIDATION.md'));
+const packageInfo = JSON.parse(await fs.readFile('package.json', 'utf8'));
+const sourceCommit = (await import('node:child_process')).execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+const restrictedSdk = await fs.stat(path.join(output, 'runtime', 'node_modules', 'node-nim')).catch(() => null);
+const bundledFfmpeg = await Promise.all(['ffmpeg.exe', 'ffprobe.exe'].map(file => fs.stat(path.join(output, 'runtime', 'bin', file)).catch(() => null)));
+const publicRedistributionReady = !restrictedSdk && bundledFfmpeg.every(file => !file);
+await fs.writeFile(path.join(output, 'BUILD-INFO.json'), JSON.stringify({
+  version: packageInfo.version,
+  sourceCommit,
+  edition: 'windows-preview',
+  publicRedistributionReady,
+  runtimeChecked: false,
+}, null, 2) + '\n');
 try {
   await fs.copyFile('docs/WINDOWS-PERFORMANCE-PROJECT.md', path.join(output, 'docs/WINDOWS-PERFORMANCE-PROJECT.md'));
   await fs.copyFile('docs/WINDOWS-PERF10.md', path.join(output, 'docs/WINDOWS-PERF10.md'));

@@ -24,11 +24,11 @@ const server = await createServer({configFile:false,logLevel:'error',optimizeDep
   load(id){if(id.replaceAll('\\','/').endsWith('/src/scene.ts'))return sceneStub;},
   transform(code,id){
     // Exercise the production timeout path without waiting 45 s in a unit fixture.
-    if(id.replaceAll('\\','/').endsWith('/src/music-app.ts'))return code.replace('!panel), 45000','!panel), window.fixture.timeoutMs || 45000');
+    if(id.replaceAll('\\','/').endsWith('/src/music-app.ts'))return code.replace('scene!.prepareMusicRenderer(startupSceneEnabled), 45000','scene!.prepareMusicRenderer(startupSceneEnabled), window.fixture.timeoutMs || 45000');
   },
 }]});
 await server.listen();
-const browser = await chromium.launch({headless:true,args:['--disable-gpu','--mute-audio']});
+const browser = await chromium.launch({ executablePath: process.env.RHINE_BROWSER, headless: true, args: ['--disable-gpu', '--mute-audio'] });
 const reports = [];
 async function fixture(options={}) {
   const context=await browser.newContext({viewport:{width:1280,height:850}}),page=await context.newPage();
@@ -39,7 +39,13 @@ async function fixture(options={}) {
     if(!localStorage.getItem('rhine-music-preferences'))localStorage.setItem('rhine-music-preferences',JSON.stringify({startupOpening:options.startupOpening===true,reduced:options.reduced===true}));
     if(options.nativeWindow){
       window.fixture.windowState={fullscreen:false,maximized:false};window.fixture.windowActions=[];
-      window.__TAURI_INTERNALS__={invoke:async(command,args={})=>{
+      let callbackId=0;
+      window.__TAURI_INTERNALS__={transformCallback:callback=>{window.fixture.callbacks??={};const id=++callbackId;window.fixture.callbacks[id]=callback;return id;},invoke:async(command,args={})=>{
+        if(command==='plugin:event|listen')return callbackId;
+        if(command==='desktop_close_preference')return null;
+        if(command==='desktop_set_close_preference')return null;
+        if(command==='desktop_close_decision')return null;
+        if(command==='desktop_request_close')return null;
         if(command==='desktop_window_state')return{...window.fixture.windowState};
         if(command!=='desktop_window_action')throw Error('Unexpected native command '+command);
         const state=window.fixture.windowState,action=args.action;window.fixture.windowActions.push(action);

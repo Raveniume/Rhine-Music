@@ -17,8 +17,9 @@ import { MusicVisualizer, normalizeVisualizer, visualizerMarkup, type Visualizer
 import './online-debug.css';
 import { fetchOnline, mountOnlineDebug, onlineErrorReport } from './online-debug';
 import { settingsCategories, settingsNavigation, groupSettingsContent, selectSettingsCategory, type SettingsCategory } from './music-settings';
-import { buildMusicFeedback, feedbackMarkup } from './music-feedback';
-import { getCloseBehavior, isDesktop, openFeedbackDraft, setCloseBehavior, windowDisplayMarkup, setWindowDisplayMode, normalizeWindowDisplayMode, type CloseBehavior, type WindowDisplayMode } from './desktop';
+import { aboutMarkup, checkForUpdates } from './music-about';
+import { buildMusicFeedback } from './music-feedback';
+import { consumeFirstLaunch, getCloseBehavior, isDesktop, openFeedbackDraft, setCloseBehavior, windowDisplayMarkup, setWindowDisplayMode, normalizeWindowDisplayMode, type CloseBehavior, type WindowDisplayMode } from './desktop';
 import { version as appVersion } from "../package.json";
 import { MusicOverviewUI } from "./music-overview-ui";
 import { KeyboardPlaybackNavigation } from './music-keyboard-playback';
@@ -1027,7 +1028,7 @@ function updateStatus() {
   const n = library.albums.length,
     tracks = library.albums.reduce((sum, a) => sum + a.tracks.length, 0);
   $<HTMLButtonElement>('[data-action="overview"]').hidden = !albums.length;
-  const label = lightingDemo ? "V0.4.1 · 内置演示封面" : !apiAvailable
+  const label = lightingDemo ? "V0.4.2 · 内置演示封面" : !apiAvailable
     ? "本地音乐服务尚未连接"
     : library.scan.running
       ? "正在扫描音乐库…"
@@ -1423,7 +1424,11 @@ function renderDetail() {
     ${a.playlistCell ? "" : `<div class="music-tabs" role="tablist" aria-label="专辑信息"><button role="tab" id="tab-tracks" data-tab="tracks" tabindex="${activeTab === "tracks" ? 0 : -1}" aria-selected="${activeTab === "tracks"}" aria-controls="album-tab-content"><span>01</span> 歌单</button><button role="tab" id="tab-about" data-tab="about" tabindex="${activeTab === "about" ? 0 : -1}" aria-selected="${activeTab === "about"}" aria-controls="album-tab-content"><span>02</span> 专辑介绍</button><i class="music-tab-indicator" aria-hidden="true"></i></div>
     <div id="album-tab-content" role="tabpanel" aria-labelledby="tab-${activeTab}">${activeTab === "tracks" ? trackList(a, discs) : albumAbout(a)}</div>`}`;
   const songTitle = a.playback?.songTitle || a.title;
-  article.innerHTML = songDetail ? `<div class="detail-overline"><span>${esc(a.tracks[0]?.onlineSource ? musicPlatforms[a.tracks[0].onlineSource.provider] : 'LOCAL MUSIC')} / ${esc(a.playlistCell?.playlistName || a.tracks[0]?.onlineSource?.albumTitle || a.title)}</span></div><h1 title="${esc(songTitle)}">${albumTitleMarkup(songTitle)}</h1><p class="detail-artist">${esc(a.tracks[0]?.artist || a.artist)}</p>${a.tracks.length ? songView.markup(a) : trackList(a, 1)}` : albumMarkup;
+  const playlistRow = a.playlistCell ? playlistLibrary.playlists.findIndex(playlist => playlist.id === a.playlistCell?.playlistId) : -1;
+  const breadcrumb = a.playlistCell && playlistRow >= 0
+    ? `<button class="detail-breadcrumb" data-playlist-open="${playlistRow}">${esc(musicPlatforms[a.tracks[0]?.onlineSource?.provider || activeProvider] || '网易云音乐')} / ${esc(a.playlistCell.playlistName)} ↗</button>`
+    : `<span>${esc(a.tracks[0]?.onlineSource ? musicPlatforms[a.tracks[0].onlineSource.provider] : 'LOCAL MUSIC')} / ${esc(a.playlistCell?.playlistName || a.tracks[0]?.onlineSource?.albumTitle || a.title)}</span>`;
+  article.innerHTML = songDetail ? `<div class="detail-overline">${breadcrumb}</div><h1 title="${esc(songTitle)}">${albumTitleMarkup(songTitle)}</h1><p class="detail-artist">${esc(a.tracks[0]?.artist || a.artist)}</p>${a.tracks.length ? songView.markup(a) : trackList(a, 1)}` : albumMarkup;
   article.scrollTop = scroll;
   syncAlbumNavigation();
   syncTabIndicator(false);
@@ -1929,7 +1934,7 @@ function followPlaylistPlayback(state: MusicPlayerState) {
 }
 function renderPlaylistsPanel() {
   const body = document.querySelector<HTMLElement>('#panel-body'); if (!body || panel !== 'playlists') return;
-  body.innerHTML = `<button class="text-button" data-action="refresh-playlists" ${playlistLibrary.loading ? 'disabled' : ''}>刷新我的歌单 ↻</button><p role="status">${esc(playlistLibrary.loading ? '正在读取歌单…' : playlistLibrary.error || `${playlistLibrary.playlists.length} 个歌单`)}</p><div class="playlist-list">${playlistLibrary.playlists.map((playlist, row) => `<button class="album-result" data-playlist-row="${row}"><span class="result-cover">${playlist.coverUrl ? `<img src="${esc(playlist.coverUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '♪'}</span><span class="result-copy"><strong>${esc(playlist.name)}</strong><small>${playlist.owned ? '创建' : '收藏'} · ${playlist.trackCount} 首歌曲</small></span><i>↗</i></button>`).join('') || (!playlistLibrary.loading && !playlistLibrary.error ? '<p>这个账号还没有歌单，三维界面保留空白谱面。</p>' : '')}</div>`;
+  body.innerHTML = `<button class="text-button" data-action="refresh-playlists" ${playlistLibrary.loading ? 'disabled' : ''}>刷新我的歌单 ↻</button><p role="status">${esc(playlistLibrary.loading ? '正在读取歌单…' : playlistLibrary.error || `${playlistLibrary.playlists.length} 个歌单`)}</p><div class="playlist-list">${playlistLibrary.playlists.map((playlist, row) => `<div class="album-result playlist-result"><button class="playlist-result-main" data-playlist-open="${row}"><span class="result-cover">${playlist.coverUrl ? `<img src="${esc(playlist.coverUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '♪'}</span><span class="result-copy"><strong>${esc(playlist.name)}</strong><small>${playlist.owned ? '创建' : '收藏'} · ${playlist.trackCount} 首歌曲</small></span></button><button class="playlist-result-arrow" data-playlist-row="${row}" aria-label="打开歌单歌曲">↗</button></div>`).join('') || (!playlistLibrary.loading && !playlistLibrary.error ? '<p>这个账号还没有歌单，三维界面保留空白谱面。</p>' : '')}</div>`;
   if (accountActive) body.insertAdjacentHTML('afterbegin', '<button type="button" class="text-button" data-action="manage-playlists">整理歌单</button>');
 }
 function onlineAccountChanged(provider: MusicProvider, account: NeteaseAccount) {
@@ -2466,7 +2471,7 @@ function renderSettingsPanel() {
     <section class="panel-section" data-settings-group="appearance"><h3>动效与显示</h3><label class="settings-row"><span>减少动态效果</span><input type="checkbox" id="reduced-motion" ${preferences.reduced ? "checked" : ""}></label></section><section class="panel-section" data-settings-group="display"><h3>窗口与全屏</h3>${windowDisplayMarkup()}</section><section class="panel-section" data-settings-group="developer"><h3>界面维护</h3><button class="text-button" data-action="replay-boot">重播开场 ↗</button><button class="text-button" data-action="reload-interface">重新载入界面 ↻</button></section>
     <section class="panel-section" data-settings-group="appearance"><h3>声音</h3><label class="settings-row"><span>歌曲音量</span><input type="range" id="volume" aria-label="歌曲音量" min="0" max="100" value="${Math.round(preferences.volume * 100)}"></label><label class="settings-row"><span>歌曲衔接</span><select id="song-fade-setting" aria-label="歌曲衔接方式"><option value="fade-out" ${preferences.songTransition === "fade-out" ? "selected" : ""}>淡出但不淡入</option><option value="fade-in-out" ${preferences.songTransition === "fade-in-out" ? "selected" : ""}>淡出淡入</option><option value="gapless" ${preferences.songTransition === "gapless" ? "selected" : ""}>无缝播放</option></select></label><label class="settings-row"><span>界面音效</span><input type="checkbox" id="sound-setting" ${preferences.sound ? "checked" : ""}></label><label class="settings-row"><span>音效音量</span><input type="range" id="sound-volume" aria-label="音效音量" min="0" max="100" value="${Math.round(preferences.soundVolume * 100)}"></label><label class="settings-row"><span>氛围 BGM</span><input type="checkbox" id="bgm-setting" ${preferences.bgm ? "checked" : ""}></label><label class="settings-row"><span>BGM 音量</span><input type="range" id="bgm-volume" aria-label="BGM 音量" min="0" max="100" value="${Math.round(preferences.bgmVolume * 100)}"></label><button class="text-button" data-action="sound-preview">试听界面音效 ↗</button></section>
     <details class="panel-section" id="musicbrainz-settings" data-settings-group="local"><summary>高级设置 · MusicBrainz</summary><button data-action="enrich-library" class="text-button">补充缺失的在线资料 ↗</button><div id="online-config"></div></details>
-    <section class="panel-section" data-settings-group="feedback"><h3>开发与资源</h3><p>音乐适配与维护：<a href="https://github.com/RonaldDeng/Rhine-Music-Demo" target="_blank" rel="noopener">RonaldDeng ↗</a><br>原版界面：<a href="https://github.com/LBEILC/RhineLabUI" target="_blank" rel="noopener">LBEILC / RhineLabUI ↗</a></p><p><a href="/licenses/project-mit.txt" target="_blank" rel="noopener">代码 MIT 许可 ↗</a> · <a href="https://github.com/RonaldDeng/Rhine-Music-Demo/blob/v0.2.0/NOTICE.md" target="_blank" rel="noopener">版权与资源说明 ↗</a></p><a href="/?original=1&scene=archive" target="_blank" rel="noopener">打开原版档案界面 ↗</a><p><a href="/fonts/MiSans-license.pdf" target="_blank" rel="noopener">MiSans 字体许可 ↗</a></p></section>`;
+    ${aboutMarkup(displayVersion)}`;
   $('#panel-body').insertAdjacentHTML('afterbegin', '<section class="panel-section" data-settings-group="local"><h3>音乐库</h3><button data-action="library" class="primary-button">管理音乐库 ↗</button></section>');
   if (lightingLab) $("#panel-body").insertAdjacentHTML("beforeend", `
     <section class="panel-section" id="developer-settings" data-settings-group="developer">
@@ -2478,8 +2483,6 @@ function renderSettingsPanel() {
       <button class="text-button" data-action="motion-debug" ${preferences.motionDebug ? "" : "hidden"}>打开动画速度调试面板 ↗</button>
       <button class="text-button" data-action="copy-performance">复制性能诊断 ↗</button>
     </section>`);
-  $("#panel-body").insertAdjacentHTML("afterbegin", feedbackMarkup());
-  $<HTMLTextAreaElement>('#feedback-description').value = feedbackDescription;
   groupSettingsContent($("#panel-body"));
   disposeKeybindingEditor = mountKeybindingEditor($('#panel-body'), () => preferences.keybindings, next => {
     keyboardPlayback.cancel(); playbackShortcuts.cancel(); preferences.keybindings = next; savePrefs();
@@ -2493,9 +2496,7 @@ function renderSettingsPanel() {
       control.closest('.settings-row')?.querySelector('span')?.textContent?.trim() || control.textContent?.trim() || '';
   }
   selectSettingsCategory($("#music-panel-root"), settingsCategory);
-  refreshFeedbackReport();
-  const feedbackDetails = document.querySelector<HTMLDetailsElement>('.feedback-diagnostics');
-  feedbackDetails?.addEventListener('toggle', () => { if (feedbackDetails.open) refreshFeedbackReport(); });
+  if (settingsCategory === 'about') void checkForUpdates(displayVersion, false);
   renderMusicBrainzSettings();
   updateQuality();
   updateIntroductionStatus();
@@ -2679,6 +2680,11 @@ document.addEventListener("click", (e) => {
     "button, [data-action]",
   );
   if (!target) return;
+  if (target.dataset.playlistOpen !== undefined) {
+    const row = Number(target.dataset.playlistOpen);
+    if (Number.isInteger(row) && row >= 0) closePanel(() => void navigatePlaylist(row, 0));
+    return;
+  }
   if (target.dataset.playlistRow !== undefined) {
     const row = Number(target.dataset.playlistRow);
     closePanel(() => void navigatePlaylist(row, 0)); return;
@@ -2781,7 +2787,7 @@ document.addEventListener("click", (e) => {
       settingsCategory = category;
       if (panel === 'library') openPanel('settings');
       else { lyricSettingsPreview.stop(); selectSettingsCategory($("#music-panel-root"), category); }
-      if (category === 'feedback') refreshFeedbackReport();
+      if (category === 'about') void checkForUpdates(displayVersion, false);
     }
     return;
   }
@@ -2844,21 +2850,9 @@ document.addEventListener("click", (e) => {
     case "copy-performance":
       void copyPerformanceReport();
       break;
-    case 'compose-feedback':
-      void composeFeedback();
+    case 'check-update':
+      void checkForUpdates(displayVersion, true);
       break;
-    case 'copy-feedback':
-      void copyFeedback();
-      break;
-    case 'save-feedback': {
-      const feedback = refreshFeedbackReport();
-      if (feedback) {
-        const url = URL.createObjectURL(new Blob([feedback.report], { type: 'application/json;charset=utf-8' }));
-        const link = document.createElement('a'); link.href = url; link.download = 'Rhine-Music-feedback.json'; link.click();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-      }
-      break;
-    }
     case "show-online-errors":
       onlineDebug.show();
       break;
@@ -3504,6 +3498,8 @@ window.addEventListener("pagehide", (event) => {
 window.addEventListener("pageshow", (event) => { if (event.persisted) resumePage(); });
 
 async function start() {
+  const firstInstalledLaunch = await consumeFirstLaunch().catch(() => false);
+  const startupSceneEnabled = (preferences.startupOpening || firstInstalledLaunch) && !preferences.reduced && !panel;
   // Settings and native window controls remain reachable during preparation.
   // Other navigation waits for the scene's matching library snapshot.
   const startupControls = [...document.querySelectorAll<HTMLElement>('.music-topnav > :not([data-action="settings"])')];
@@ -3511,7 +3507,7 @@ async function start() {
   let openingAccountPrepared = false;
   void prepareStartupExtras();
   try {
-    if (preferences.startupOpening && !preferences.reduced && !panel) {
+    if (startupSceneEnabled) {
       loadingOpening = new LoadingOpening(stage);
       loadingOpening.setHidden(document.hidden || nativeHidden);
       $("#music-loading").hidden = true;
@@ -3520,7 +3516,7 @@ async function start() {
     }
     await startup.run("library", signal => loadLibrary(true, signal), 10000);
     if (frameDisposed) return;
-    if (preferences.startupOpening && !preferences.reduced && !panel) {
+    if (startupSceneEnabled) {
       loadingOpening?.setStatus("正在准备开场歌单与封面…");
       await startup.run("account-library", () => prepareOpeningLibrary(), 20000);
       openingAccountPrepared = true;
@@ -3576,7 +3572,7 @@ async function start() {
     scene.setReduced(preferences.reduced);
     await yieldStartupFrame();
     if (frameDisposed) return;
-    await startup.run("renderer", () => scene!.prepareMusicRenderer(preferences.startupOpening && !preferences.reduced && !panel), 45000);
+    await startup.run("renderer", () => scene!.prepareMusicRenderer(startupSceneEnabled), 45000);
     if (frameDisposed) return;
     // Browser playback does not need a Swift compiler at startup. A saved
     // native output is restored after graphics preparation; otherwise discover
@@ -3627,7 +3623,7 @@ async function start() {
     updateSelection();
     // The renderer has warmed the opening pose. Rendering the settled archive
     // here would evict its visible cover slots immediately before the wave.
-    if (!preferences.startupOpening || preferences.reduced || panel)
+    if (!startupSceneEnabled)
       scene.showMusicArchiveImmediately(performance.now() / 1000);
     effects.setScene("archive");
     if (albums.length) showBrowseSurface();
@@ -3638,9 +3634,13 @@ async function start() {
     stage.classList.add("theme-motion-ready");
     // Start after graphics preparation, so loading/compilation never consumes
     // the wave. An already-open settings panel keeps its interaction ownership.
-    if (!panel && preferences.startupOpening && !preferences.reduced) boot?.startScene();
+    if (!panel && startupSceneEnabled) {
+      if (firstInstalledLaunch) boot?.start();
+      else boot?.startScene();
+    }
     startup.complete();
     $("#music-loading").remove();
+    if (isDesktop()) setTimeout(() => void checkForUpdates(displayVersion, true), 1600);
     if (!document.hidden && !nativeHidden && !frameDisposed) {
       frameSuspended = false;
       resetFrameTiming();

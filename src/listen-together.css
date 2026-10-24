@@ -1,4 +1,4 @@
-.song-add-playlist { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 32px; margin-left: auto; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.song-add-playlist { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 34px; height: 32px; margin-left: auto; border: 0; background: transparent; color: var(--muted); cursor: pointer; white-space: nowrap; writing-mode: horizontal-tb; }
 .song-add-playlist svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
 .song-add-playlist:hover { color: var(--accent); }
 .song-add-playlist:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }

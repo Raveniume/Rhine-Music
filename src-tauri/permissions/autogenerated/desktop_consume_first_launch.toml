@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-consume-first-launch"
+description = "Enables the desktop_consume_first_launch command without any pre-configured scope."
+commands.allow = ["desktop_consume_first_launch"]
+
+[[permission]]
+identifier = "deny-desktop-consume-first-launch"
+description = "Denies the desktop_consume_first_launch command without any pre-configured scope."
+commands.deny = ["desktop_consume_first_launch"]

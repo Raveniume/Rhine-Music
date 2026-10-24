@@ -4,5 +4,5 @@
   "description": "Only the owned loopback music window receives desktop capabilities.",
   "windows": ["main", "taskbar-lyrics", "tray-controls"],
   "remote": { "urls": ["http://127.0.0.1:*/*"] },
-  "permissions": ["core:default", "core:window:allow-start-dragging", "allow-desktop-window-state", "allow-desktop-window-action", "allow-desktop-request-close", "allow-desktop-pick-folder", "allow-desktop-open-link", "allow-desktop-open-feedback", "allow-desktop-taskbar-lyric-update", "allow-desktop-taskbar-action", "allow-desktop-taskbar-lyric-ready", "allow-desktop-tray-action"]
+  "permissions": ["core:default", "core:window:allow-start-dragging", "allow-desktop-window-state", "allow-desktop-window-action", "allow-desktop-request-close", "allow-desktop-close-preference", "allow-desktop-set-close-preference", "allow-desktop-close-decision", "allow-desktop-pick-folder", "allow-desktop-open-link", "allow-desktop-open-feedback", "allow-desktop-taskbar-lyric-update", "allow-desktop-taskbar-action", "allow-desktop-taskbar-lyric-ready", "allow-desktop-tray-action", "allow-desktop-check-update", "allow-desktop-install-update", "allow-desktop-consume-first-launch"]
 }

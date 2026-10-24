@@ -5,7 +5,7 @@ export const settingsCategories = {
   appearance: '个性化',
   display: '画面显示设置',
   developer: '开发者设置',
-  feedback: '反馈',
+  about: '关于',
 } as const;
 export type SettingsCategory = keyof typeof settingsCategories;
 export function settingsNavigation() {

@@ -8,6 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 mod instance_handoff;
 mod taskbar_lyric;
@@ -238,6 +239,59 @@ fn desktop_open_feedback(url: &str) -> Result<(), String> {
     open::that_detached(url).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn desktop_check_update() -> Result<serde_json::Value, String> {
+    let client = reqwest::blocking::Client::builder().user_agent("RhineMusic-Updater/1").timeout(Duration::from_secs(10)).build().map_err(|e| e.to_string())?;
+    let response = client.get("https://api.github.com/repos/Raveniume/Rhine-Music/releases/latest").send().map_err(|e| e.to_string())?;
+    if !response.status().is_success() { return Err(format!("GitHub 更新接口返回 {}", response.status())); }
+    response.json::<serde_json::Value>().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn desktop_consume_first_launch() -> Result<bool, String> {
+    let executable = std::env::current_exe().map_err(|e| e.to_string())?;
+    let marker = executable.parent().ok_or("安装目录不可用")?.join(".rhine-first-launch");
+    match std::fs::remove_file(marker) {
+        Ok(()) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+#[tauri::command]
+fn desktop_install_update(app: tauri::AppHandle, url: String, sha256: String) -> Result<(), String> {
+    let parsed: tauri::Url = url.parse().map_err(|_| "更新地址无效".to_owned())?;
+    if parsed.scheme() != "https" || parsed.host_str() != Some("github.com") || parsed.port_or_known_default() != Some(443) || !parsed.path().starts_with("/Raveniume/Rhine-Music/releases/download/") { return Err("更新地址不是 RhineMusic GitHub Release 资产".into()); }
+    if sha256.len() != 64 || !sha256.bytes().all(|b| b.is_ascii_hexdigit()) { return Err("更新校验值无效".into()); }
+    let filename = parsed.path_segments().and_then(|mut parts| parts.next_back()).filter(|name| name.starts_with("Rhine-Music-Windows-") && name.ends_with("-Setup.exe")).ok_or("更新文件类型不受支持")?;
+    let dir = app.path().app_cache_dir().map_err(|e| e.to_string())?.join("updates");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let target = dir.join(filename);
+    let client = reqwest::blocking::Client::builder().user_agent("RhineMusic-Updater/1").timeout(Duration::from_secs(300)).build().map_err(|e| e.to_string())?;
+    let mut response = client.get(url).send().map_err(|e| e.to_string())?;
+    if !response.status().is_success() { return Err(format!("更新下载返回 {}", response.status())); }
+    let mut file = std::fs::File::create(&target).map_err(|e| e.to_string())?;
+    std::io::copy(&mut response, &mut file).map_err(|e| e.to_string())?;
+    use std::io::{Read, Seek};
+    file.rewind().map_err(|e| e.to_string())?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop { let count = file.read(&mut buffer).map_err(|e| e.to_string())?; if count == 0 { break; } hasher.update(&buffer[..count]); }
+    let digest = format!("{:x}", hasher.finalize());
+    if !digest.eq_ignore_ascii_case(&sha256) { let _ = std::fs::remove_file(&target); return Err("更新文件校验失败".into()); }
+    EXITING.store(true, Ordering::Release);
+    #[cfg(windows)] {
+        use std::os::windows::process::CommandExt;
+        let app_pid = std::process::id();
+        let target_ps = target.to_string_lossy().replace('\'', "''");
+        let script = format!("Wait-Process -Id {app_pid}; $installer = Start-Process -FilePath '{target_ps}' -Wait -PassThru; if ($installer.ExitCode -eq 0) {{ $entry = Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\RhineMusicWindowsPreview' -ErrorAction SilentlyContinue; if ($entry.InstallLocation) {{ Start-Process (Join-Path $entry.InstallLocation 'Rhine Music.exe') }} }}");
+        Command::new("powershell.exe").args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", &script]).creation_flags(0x08000000).spawn().map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(windows))] { return Err("Windows 安装包只能由 Windows 桌面版更新".into()); }
+    app.exit(0);
+    Ok(())
+}
+
 fn start_service(app: &tauri::AppHandle) -> Result<(MusicService, tauri::Url), Box<dyn std::error::Error>> {
     let resource_root = app.path().resource_dir()?.join("runtime");
     let runtime: PathBuf = if resource_root.join("node.exe").is_file() { resource_root }
@@ -286,7 +340,7 @@ fn main() {
                 | tauri_plugin_window_state::StateFlags::POSITION
                 | tauri_plugin_window_state::StateFlags::MAXIMIZED)
             .build())
-        .invoke_handler(tauri::generate_handler![desktop_window_action, desktop_request_close, desktop_window_state, desktop_close_preference, desktop_set_close_preference, desktop_close_decision, desktop_pick_folder, desktop_open_link, desktop_open_feedback, taskbar_lyric::update, taskbar_lyric::ready, taskbar_lyric::action, taskbar_lyric::tray_action])
+        .invoke_handler(tauri::generate_handler![desktop_window_action, desktop_request_close, desktop_window_state, desktop_close_preference, desktop_set_close_preference, desktop_close_decision, desktop_pick_folder, desktop_open_link, desktop_open_feedback, desktop_check_update, desktop_install_update, desktop_consume_first_launch, taskbar_lyric::update, taskbar_lyric::ready, taskbar_lyric::action, taskbar_lyric::tray_action])
         .setup(|app| {
             let (service, url) = start_service(app.handle())?;
             app.manage(service);

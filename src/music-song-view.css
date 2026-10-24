@@ -69,7 +69,7 @@
 .song-step-buttons button[data-action="playing-prev"]:hover svg { transform: translateX(-2px); }
 .song-step-buttons button[data-action="playing-next"]:hover svg { transform: translateX(2px); }
 .song-step-buttons button:disabled { opacity: .35; cursor: default; }
-.song-add-playlist { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--accent); background: color-mix(in srgb, var(--accent) 5%, transparent); font-size: 12px; cursor: pointer; transition: color .18s ease, border-color .18s ease, background .18s ease; }
+.song-add-playlist { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 7px; min-height: 36px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--accent); background: color-mix(in srgb, var(--accent) 5%, transparent); font-size: 12px; cursor: pointer; white-space: nowrap; writing-mode: horizontal-tb; transition: color .18s ease, border-color .18s ease, background .18s ease; }
 .song-add-playlist svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
 .song-add-playlist:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .lyric-transport { margin-top: 16px; }
@@ -114,18 +114,13 @@
 .song-view-tab-indicator { position: absolute; left: 0; bottom: -1px; width: 1px; height: 2px; background: var(--accent); transform-origin: left center; transition: transform .24s cubic-bezier(.22, 1, .36, 1); pointer-events: none; }
 .song-view-tabs button:hover { color: var(--ink); }
 .song-view-tabs button:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
+.detail-breadcrumb { border: 0; padding: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.detail-breadcrumb:hover { color: var(--accent); }
 
-/* Use the panel's real remaining space, rather than width alone. Long titles
-   and user height preferences must not consume the entire lyric viewport. */
-#album-detail-content:has(#song-view[data-lyrics-active="true"]) > h1 {
-  font-size: clamp(24px, 2.45vw, 39px);
-  line-height: 1.22;
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
-  overflow: hidden;
-}
-#album-detail-content:has(#song-view[data-lyrics-active="true"]) > .detail-artist {
-  display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
+#album-detail-content > h1 { font-size: clamp(24px, 2.45vw, 39px); line-height: 1.22; min-height: 1.22em; }
+#album-detail-content > .detail-artist { min-height: 1.5em; }
+#album-tab-content { animation: song-tab-enter .24s cubic-bezier(.22, 1, .36, 1); }
+@keyframes song-tab-enter { from { opacity: .15; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @container song-detail (max-height: 640px) {
   .detail-overline { margin-bottom: 8px; line-height: 1.5; max-height: 3em; overflow: hidden; }
   #album-detail-content > h1 { margin-bottom: 6px; line-height: 1.2; }
@@ -139,7 +134,7 @@
   .lyric-transport { margin-top: 8px; }
 }
 @container song-detail (max-height: 460px) {
-  #album-detail-content:has(#song-view[data-lyrics-active="true"]) > h1 { -webkit-line-clamp: 1; }
+  #album-detail-content > h1 { -webkit-line-clamp: 1; }
   .detail-overline { max-height: 1.5em; }
   #song-view { margin-top: 8px; }
   .song-view-tabs { margin-bottom: 8px; }

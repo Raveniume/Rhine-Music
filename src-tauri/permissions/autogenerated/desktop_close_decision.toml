@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-close-decision"
+description = "Enables the desktop_close_decision command without any pre-configured scope."
+commands.allow = ["desktop_close_decision"]
+
+[[permission]]
+identifier = "deny-desktop-close-decision"
+description = "Denies the desktop_close_decision command without any pre-configured scope."
+commands.deny = ["desktop_close_decision"]

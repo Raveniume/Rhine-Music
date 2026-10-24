@@ -1,5 +1,4 @@
 import { hasTypingBetween } from "./typing-rhythm";
-import { TYPING_PCM, TYPING_SAMPLE_RATE } from "./typing-samples";
 import { assetUrl } from "./asset-url";
 export type Sound =
   | "page-open"
@@ -29,31 +28,6 @@ export type AudioPreferences = {
 const STEMS = ["atmosphere", "motif", "pulse"] as const;
 const LOOP_SECONDS = 160 / 3;
 const noiseBuffers = new WeakMap<BaseAudioContext, AudioBuffer>();
-const typingBuffers = new WeakMap<
-  BaseAudioContext,
-  { buffers: AudioBuffer[]; next: number }
->();
-function typingSample(c: BaseAudioContext) {
-  let bank = typingBuffers.get(c);
-  if (!bank) {
-    bank = {
-      buffers: TYPING_PCM.map((encoded) => {
-        const bytes = atob(encoded);
-        const buffer = c.createBuffer(1, bytes.length / 2, TYPING_SAMPLE_RATE);
-        const data = buffer.getChannelData(0);
-        for (let i = 0; i < data.length; i++) {
-          const word =
-            bytes.charCodeAt(i * 2) | (bytes.charCodeAt(i * 2 + 1) << 8);
-          data[i] = (word > 32767 ? word - 65536 : word) / 32768;
-        }
-        return buffer;
-      }),
-      next: 0,
-    };
-    typingBuffers.set(c, bank);
-  }
-  return bank.buffers[bank.next++ % bank.buffers.length];
-}
 const clamp = (x: number) =>
   Math.max(0, Math.min(1, Number.isFinite(x) ? x : 0));
 const level = (
@@ -230,9 +204,9 @@ export function synthesizeSound(
       tone(1050, 1050, 0.012, 0.06, 0, 0.005);
       break;
     case "key": {
-      const source = c.createBufferSource();
-      source.buffer = typingSample(c);
-      connect(source, source, 0.2, 0, source.buffer.duration, 0, true);
+      // Procedural key click keeps the startup sound redistributable.
+      air(2400, 1500, 0.055, 0.028, 0, 0.001);
+      tone(880, 620, 0.018, 0.034, 0, 0.001);
       break;
     }
     case "tick":
