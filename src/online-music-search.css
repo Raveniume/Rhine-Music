@@ -1,0 +1,36 @@
+@import './music-song-actions.css';
+.search-sources { display: flex; gap: 8px; margin-bottom: 16px; }
+.search-sources button { padding: 7px 14px; border: 1px solid var(--line); font-size: 11px; }
+.search-sources button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+.online-search-form { display: flex; align-items: stretch; gap: 10px; }
+.online-search-form .album-search { flex: 1; min-width: 0; width: auto; }
+.online-search-form button { flex-shrink: 0; padding: 0 16px; }
+.online-search-note, .online-search-status { font-size: 11px; line-height: 1.7; color: var(--muted); margin: 12px 0; }
+.online-search-status { min-height: 19px; }
+.online-song { position: relative; border-bottom: 1px solid var(--line); }
+.online-song-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.online-song .album-result { flex: 1; min-width: 0; grid-template-columns: 49px minmax(0, 1fr) 54px; border-bottom: 0; padding-bottom: 12px; }
+.online-song .row-song-actions { padding-right: 2px; }
+.online-song .result-copy { min-width: 0; }
+@media (max-width: 520px) {
+  .online-song-row { gap: 5px; }
+  .online-song .album-result { grid-template-columns: 38px minmax(0, 1fr); gap: 8px; }
+  .online-song .result-cover { width: 38px; height: 38px; }
+  .online-song .album-result em { display: none; }
+  .online-song .row-song-actions { gap: 3px; }
+  .online-song .row-song-action { width: 29px; height: 32px; }
+}
+.online-song button[aria-pressed="true"] { color: var(--accent); }
+.online-search-pages { display: flex; justify-content: space-between; gap: 12px; margin-top: 16px; }
+.online-search-pages button { padding: 8px 12px; border: 1px solid var(--line); font-size: 11px; }
+#online-results [disabled] { opacity: .45; cursor: wait; }
+.netease-login { margin-bottom: 22px; }
+.netease-account { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.netease-account small { display: block; opacity: .65; margin-top: 7px; }
+.netease-qr { text-align: center; padding: 20px 12px 8px; }
+.netease-qr img { background: white; padding: 12px; border-radius: 12px; box-sizing: content-box; }
+.netease-qr p, .netease-auth-status { font-size: 12px; line-height: 1.8; opacity: .7; }
+
+.login-platforms { flex-wrap: wrap; }
+.platform-login-method { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; font-size: 12px; }
+.platform-login-method select { border: 1px solid var(--line); background: transparent; color: var(--ink); padding: 7px 10px; }

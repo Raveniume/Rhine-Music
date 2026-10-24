@@ -1,0 +1,62 @@
+node_modules/
+/src-tauri/target/
+/src-tauri/target-public/
+/src-tauri/gen/
+/desktop-runtime/
+/desktop-binaries/
+/artifacts/
+backups/
+dist/
+.tools/
+*.mp4
+*.blend1
+optix7cache.db
+reference/*.jpg
+reference/**/*.jpg
+art/.cache/
+.worktrees/
+release/
+video/
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+
+# Machine-local music library data and development state
+.DS_Store
+music-data*/
+/library-index.json
+/genre-rules.json
+/artwork/
+*.log
+.codex/
+.agents/
+
+# Local sessions, release archives, and optional library overrides
+.Rhistory
+.RData
+/config.json
+*.dpapi
+*.dpapi.*.tmp
+/launcher.lock
+*.backup
+*.zip
+*.tar.gz
+verification/music-v2/
+art/archive-studio.png
+
+# Local comparison audio from the original reference video (not a runtime asset)
+reference/typing-original.wav
+
+# Private promotional film material and its project-specific production sources
+/promo/
+/promo.html
+/film-review.html
+/src/promo-*
+/scripts/*promo*
+/docs/PROMO-*.md
+
+# Local video research frames: not runtime assets or public distribution material
+/public/lighting-reference/
+/reference/motion/

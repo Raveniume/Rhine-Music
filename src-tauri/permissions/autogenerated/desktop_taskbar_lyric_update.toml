@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-taskbar-lyric-update"
+description = "Enables the desktop_taskbar_lyric_update command without any pre-configured scope."
+commands.allow = ["desktop_taskbar_lyric_update"]
+
+[[permission]]
+identifier = "deny-desktop-taskbar-lyric-update"
+description = "Denies the desktop_taskbar_lyric_update command without any pre-configured scope."
+commands.deny = ["desktop_taskbar_lyric_update"]
