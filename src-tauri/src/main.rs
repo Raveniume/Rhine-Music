@@ -1,11 +1,81 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::{io::{BufRead, BufReader, Write}, path::PathBuf, process::{Child, Command, Stdio}, sync::Mutex, time::{Duration, Instant}};
-use tauri::{Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use std::{
+    io::{BufRead, BufReader, Write},
+    path::PathBuf,
+    process::{Child, Command, Stdio},
+    sync::{atomic::{AtomicBool, Ordering}, Mutex},
+    time::{Duration, Instant},
+};
+use serde::{Deserialize, Serialize};
+use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 mod instance_handoff;
 mod taskbar_lyric;
 
 struct MusicService(Mutex<Option<Child>>);
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum CloseBehavior {
+    Exit,
+    Tray,
+}
+
+struct ClosePreference(Mutex<Option<CloseBehavior>>);
+static EXITING: AtomicBool = AtomicBool::new(false);
+
+fn close_preference_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(app
+        .path()
+        .app_local_data_dir()
+        .map_err(|error| error.to_string())?
+        .join("close-behavior.json"))
+}
+
+fn load_close_preference(app: &tauri::AppHandle) -> ClosePreference {
+    let value = close_preference_path(app)
+        .ok()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|text| serde_json::from_str::<CloseBehavior>(&text).ok());
+    ClosePreference(Mutex::new(value))
+}
+
+fn persist_close_preference(app: &tauri::AppHandle, value: Option<CloseBehavior>) -> Result<(), String> {
+    let path = close_preference_path(app)?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    match value {
+        Some(value) => std::fs::write(path, serde_json::to_vec(&value).map_err(|error| error.to_string())?)
+            .map_err(|error| error.to_string()),
+        None => match std::fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error.to_string()),
+        },
+    }
+}
+
+fn apply_close_behavior(app: &tauri::AppHandle, behavior: CloseBehavior) -> Result<(), String> {
+    match behavior {
+        CloseBehavior::Tray => app
+            .get_webview_window("main")
+            .ok_or_else(|| "主窗口不存在".to_owned())?
+            .hide()
+            .map_err(|error| error.to_string()),
+        CloseBehavior::Exit => {
+            EXITING.store(true, Ordering::Release);
+            if let Some(taskbar) = app.get_webview_window("taskbar-lyrics") {
+                let _ = taskbar.close();
+            }
+            if let Some(tray) = app.get_webview_window("tray-controls") {
+                let _ = tray.close();
+            }
+            app.exit(0);
+            Ok(())
+        }
+    }
+}
 
 impl MusicService {
     fn stop(&self) {
@@ -46,6 +116,68 @@ fn enter_window_fullscreen(window: &WebviewWindow) -> tauri::Result<()> {
 async fn desktop_window_action(window: WebviewWindow, action: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || apply_window_action(window, &action))
         .await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn desktop_request_close(app: tauri::AppHandle, state: State<'_, ClosePreference>) -> Result<(), String> {
+    let behavior = state
+        .0
+        .lock()
+        .map_err(|_| "关闭偏好不可用".to_owned())?
+        .as_ref()
+        .copied();
+    match behavior {
+        Some(value) => apply_close_behavior(&app, value),
+        None => app
+            .emit_to("main", "rhine-close-requested", ())
+            .map_err(|error| error.to_string()),
+    }
+}
+
+#[tauri::command]
+fn desktop_close_preference(state: State<'_, ClosePreference>) -> Result<Option<String>, String> {
+    Ok(state
+        .0
+        .lock()
+        .map_err(|_| "关闭偏好不可用".to_owned())?
+        .map(|value| match value {
+            CloseBehavior::Exit => "exit".to_owned(),
+            CloseBehavior::Tray => "tray".to_owned(),
+        }))
+}
+
+#[tauri::command]
+fn desktop_set_close_preference(
+    app: tauri::AppHandle,
+    state: State<'_, ClosePreference>,
+    behavior: String,
+) -> Result<(), String> {
+    let value = match behavior.as_str() {
+        "exit" => Some(CloseBehavior::Exit),
+        "tray" => Some(CloseBehavior::Tray),
+        "ask" => None,
+        _ => return Err("未知的关闭行为".to_owned()),
+    };
+    *state.0.lock().map_err(|_| "关闭偏好不可用".to_owned())? = value;
+    persist_close_preference(&app, value)
+}
+
+#[tauri::command]
+fn desktop_close_decision(
+    app: tauri::AppHandle,
+    state: State<'_, ClosePreference>,
+    behavior: String,
+    remember: bool,
+) -> Result<(), String> {
+    let value = match behavior.as_str() {
+        "exit" => CloseBehavior::Exit,
+        "tray" => CloseBehavior::Tray,
+        _ => return Err("未知的关闭行为".to_owned()),
+    };
+    let stored = if remember { Some(value) } else { None };
+    *state.0.lock().map_err(|_| "关闭偏好不可用".to_owned())? = stored;
+    persist_close_preference(&app, stored)?;
+    apply_close_behavior(&app, value)
 }
 
 fn apply_window_action(window: WebviewWindow, action: &str) -> Result<(), String> {
@@ -154,10 +286,11 @@ fn main() {
                 | tauri_plugin_window_state::StateFlags::POSITION
                 | tauri_plugin_window_state::StateFlags::MAXIMIZED)
             .build())
-        .invoke_handler(tauri::generate_handler![desktop_window_action, desktop_window_state, desktop_pick_folder, desktop_open_link, desktop_open_feedback, taskbar_lyric::update, taskbar_lyric::ready, taskbar_lyric::action])
+        .invoke_handler(tauri::generate_handler![desktop_window_action, desktop_request_close, desktop_window_state, desktop_close_preference, desktop_set_close_preference, desktop_close_decision, desktop_pick_folder, desktop_open_link, desktop_open_feedback, taskbar_lyric::update, taskbar_lyric::ready, taskbar_lyric::action, taskbar_lyric::tray_action])
         .setup(|app| {
             let (service, url) = start_service(app.handle())?;
             app.manage(service);
+            app.manage(load_close_preference(app.handle()));
             let origin = url.origin().ascii_serialization();
             taskbar_lyric::setup_tray(app.handle()).map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
             let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url.clone()))
@@ -168,6 +301,7 @@ fn main() {
                 .on_navigation(move |target| target.origin().ascii_serialization() == origin)
                 .build()?;
             taskbar_lyric::setup_taskbar_window(app.handle(), &url).map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+            taskbar_lyric::setup_tray_controls(app.handle(), &url).map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
             // OS visibility explicitly suspends only rendering. Audio remains independent.
             // Window getters can synchronously re-enter the UI runtime. Never
             // call them (or eval) while a native event listener is on its stack.
@@ -187,11 +321,25 @@ fn main() {
                 if matches!(event, tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Focused(_)) {
                     let _ = notify.try_send(());
                 }
-                if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
-                    if let Some(taskbar) = app_for_close.get_webview_window("taskbar-lyrics") {
-                        let _ = taskbar.close();
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    if EXITING.load(Ordering::Acquire) {
+                        return;
                     }
-                    app_for_close.exit(0);
+                    api.prevent_close();
+                    let behavior = app_for_close
+                        .state::<ClosePreference>()
+                        .0
+                        .lock()
+                        .ok()
+                        .and_then(|value| *value);
+                    match behavior {
+                        Some(value) => {
+                            let _ = apply_close_behavior(&app_for_close, value);
+                        }
+                        None => {
+                            let _ = app_for_close.emit_to("main", "rhine-close-requested", ());
+                        }
+                    }
                 }
             });
             Ok(())

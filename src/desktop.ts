@@ -6,6 +6,13 @@ export { normalizeWindowDisplayMode } from './window-display-mode';
 export type { WindowDisplayMode } from './window-display-mode';
 
 export const isDesktop = () => "__TAURI_INTERNALS__" in window;
+export type CloseBehavior = 'ask' | 'tray' | 'exit';
+let closeBehavior: CloseBehavior = 'ask';
+export const getCloseBehavior = () => closeBehavior;
+export async function setCloseBehavior(value: CloseBehavior) {
+  closeBehavior = value;
+  if (isDesktop()) await invoke('desktop_set_close_preference', { behavior: value });
+}
 type WindowState = { fullscreen: boolean; maximized: boolean };
 let windowState: WindowState = { fullscreen: false, maximized: false };
 let preferredWindowMode: WindowDisplayMode = 'maximized';
@@ -36,6 +43,28 @@ function showError(error: unknown) {
 export function mountDesktop() {
   if (!isDesktop()) return;
   document.documentElement.classList.add("rhine-desktop");
+  const closePrompt = document.createElement('div');
+  closePrompt.className = 'desktop-close-prompt';
+  closePrompt.hidden = true;
+  closePrompt.innerHTML = `<section class="desktop-close-dialog" role="dialog" aria-modal="true" aria-labelledby="desktop-close-title"><div class="desktop-close-dialog-heading"><div><small>RHINE MUSIC</small><h2 id="desktop-close-title">关闭 RhineMusic</h2></div><button type="button" data-close-choice="cancel" aria-label="取消">×</button></div><p>你希望如何处理正在播放的音乐？</p><label class="desktop-close-remember"><input type="checkbox" data-close-remember>记住我的选择</label><div class="desktop-close-actions"><button type="button" data-close-choice="tray">最小化到托盘</button><button type="button" class="primary-button" data-close-choice="exit">彻底退出</button></div></section>`;
+  document.body.append(closePrompt);
+  const remember = closePrompt.querySelector<HTMLInputElement>('[data-close-remember]')!;
+  closePrompt.addEventListener('click', event => {
+    const choice = (event.target as HTMLElement).closest<HTMLElement>('[data-close-choice]')?.dataset.closeChoice;
+    if (choice === 'cancel' || event.target === closePrompt) { closePrompt.hidden = true; return; }
+    if (choice !== 'tray' && choice !== 'exit') return;
+    closePrompt.hidden = true;
+    void invoke('desktop_close_decision', { behavior: choice, remember: remember.checked }).catch(showError);
+  });
+  void listen('rhine-close-requested', () => {
+    remember.checked = false;
+    closePrompt.hidden = false;
+    closePrompt.querySelector<HTMLButtonElement>('[data-close-choice="tray"]')?.focus();
+  });
+  void invoke<string | null>('desktop_close_preference').then(value => {
+    closeBehavior = value === 'tray' || value === 'exit' ? value : 'ask';
+    window.dispatchEvent(new CustomEvent('rhine-close-preference-changed', { detail: { behavior: closeBehavior } }));
+  }).catch(() => {});
   window.addEventListener('rhine-lyric-state', event => {
     const detail = (event as CustomEvent<Record<string, unknown>>).detail;
     void invoke('desktop_taskbar_lyric_update', { payload: detail }).catch(error => {
@@ -67,7 +96,8 @@ export function mountDesktop() {
   };
   const act = async (action: string) => {
     try {
-      await invoke("desktop_window_action", { action });
+      if (action === 'close') await invoke("desktop_request_close");
+      else await invoke("desktop_window_action", { action });
     } catch (error) { showError(error); }
     // Refresh even after partial failures (for example, fullscreen succeeded
     // but focusing failed), so the middle button can still restore the window.

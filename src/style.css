@@ -40,6 +40,19 @@ body {
   margin: 0;
   overflow: hidden;
 }
+.music-app,
+.music-app * {
+  user-select: none;
+  -webkit-user-select: none;
+}
+.music-app input,
+.music-app textarea,
+.music-app [contenteditable="true"],
+.music-app .feedback-report,
+.music-app .online-debug-copy {
+  user-select: text;
+  -webkit-user-select: text;
+}
 img,
 canvas {
   -webkit-touch-callout: none;
@@ -72,8 +85,7 @@ button {
   touch-action: manipulation;
 }
 ::selection {
-  background: #cbb397;
-  color: #151713;
+  background: transparent;
 }
 #viewport {
   width: 100vw;

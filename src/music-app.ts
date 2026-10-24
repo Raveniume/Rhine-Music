@@ -18,7 +18,7 @@ import './online-debug.css';
 import { fetchOnline, mountOnlineDebug, onlineErrorReport } from './online-debug';
 import { settingsCategories, settingsNavigation, groupSettingsContent, selectSettingsCategory, type SettingsCategory } from './music-settings';
 import { buildMusicFeedback, feedbackMarkup } from './music-feedback';
-import { openFeedbackDraft, windowDisplayMarkup, setWindowDisplayMode, normalizeWindowDisplayMode, type WindowDisplayMode } from './desktop';
+import { getCloseBehavior, isDesktop, openFeedbackDraft, setCloseBehavior, windowDisplayMarkup, setWindowDisplayMode, normalizeWindowDisplayMode, type CloseBehavior, type WindowDisplayMode } from './desktop';
 import { version as appVersion } from "../package.json";
 import { MusicOverviewUI } from "./music-overview-ui";
 import { KeyboardPlaybackNavigation } from './music-keyboard-playback';
@@ -97,7 +97,6 @@ import type { LightingLabController, LightingLabSettings } from "./music-lightin
 import { setupMotionLab } from "./music-motion-lab";
 import { getMusicMotionSpeed, normalizeMusicMotionSpeed, onMusicMotionSpeedChange, setMusicMotionSpeed } from "./music-motion-settings";
 import { mountMusicWheelNavigation } from "./music-wheel-navigation";
-import { isDesktop } from "./desktop";
 import { RenderScheduler, FRAME_LIMITS, normalizeFrameLimit, type FrameLimit } from "./render-scheduler";
 
 // A repeatable visual study that uses only the three bundled sample covers.
@@ -152,6 +151,7 @@ const preferences = {
     keybindings: normalizeKeybindings(undefined),
     frameLimit: 60 as FrameLimit,
     windowDisplayMode: 'maximized' as WindowDisplayMode,
+    closeBehavior: getCloseBehavior() as CloseBehavior,
     visualizer: undefined as VisualizerOptions | undefined,
     lyricAreaSize: undefined as number | undefined,
     audioBackend: "browser" as "browser" | "coreaudio",
@@ -188,6 +188,7 @@ const preferences = {
       keybindings: MusicKeybindings;
       frameLimit: FrameLimit;
       windowDisplayMode: WindowDisplayMode;
+      closeBehavior: CloseBehavior;
       visualizer: VisualizerOptions;
       lyricAreaSize: number;
       lyricAreaHeight: number;
@@ -218,6 +219,13 @@ const preferences = {
 const savedLyricSize = preferences.lyricAreaSize ?? preferences.lyricAreaHeight;
 preferences.windowDisplayMode = normalizeWindowDisplayMode(preferences.windowDisplayMode);
 setWindowDisplayMode(preferences.windowDisplayMode);
+preferences.closeBehavior = ['ask', 'tray', 'exit'].includes(preferences.closeBehavior) ? preferences.closeBehavior : 'ask';
+window.addEventListener('rhine-close-preference-changed', event => {
+  const value = (event as CustomEvent<{ behavior?: string }>).detail?.behavior;
+  preferences.closeBehavior = value === 'tray' || value === 'exit' ? value : 'ask';
+  savePrefs();
+  if (panel === 'settings') renderSettingsPanel();
+});
 preferences.lyricAreaSize = typeof savedLyricSize === "number" && Number.isFinite(savedLyricSize) ? Math.max(40, Math.min(100, savedLyricSize)) : 100;
 delete preferences.lyricAreaHeight;
 preferences.keyboardSyncPlayback = preferences.keyboardSyncPlayback === true;
@@ -2439,6 +2447,7 @@ function renderSettingsPanel() {
   $("#panel-body").innerHTML =
     `<section class="panel-section" data-settings-group="appearance"><h3>外观主题</h3><div class="theme-cards">${(["day", "night"] as Theme[]).map((t) => `<button data-theme="${t}" aria-pressed="${preferences.theme === t}" class="${t}"><i></i><strong>${themeNames[t]}</strong><span>${t === "day" ? "暖白玻璃与日光" : "极简星空与透光白卡"}</span></button>`).join("")}</div></section>
     <section class="panel-section" data-settings-group="appearance"><h3>启动体验</h3><label class="settings-row"><span>启动时展示开场动画</span><input type="checkbox" id="startup-opening" aria-label="启动时展示开场动画" ${preferences.startupOpening ? "checked" : ""}></label><p class="quality-note">播放开场时后台加载模型；关闭后直接显示加载界面。下次启动生效，减少动态效果开启时跳过。</p></section>
+    <section class="panel-section" data-settings-group="appearance"><h3>关闭行为</h3><label class="settings-row"><span>点击关闭按钮时</span><select id="close-behavior" aria-label="点击关闭按钮时"><option value="ask" ${preferences.closeBehavior === 'ask' ? 'selected' : ''}>每次询问</option><option value="tray" ${preferences.closeBehavior === 'tray' ? 'selected' : ''}>最小化到托盘</option><option value="exit" ${preferences.closeBehavior === 'exit' ? 'selected' : ''}>彻底退出</option></select></label><p class="quality-note">托盘模式会继续播放音乐，并保留任务栏歌词与播放控制。</p></section>
     ${visualizerMarkup(preferences.visualizer!)}
     <section class="panel-section" data-settings-group="appearance"><h3>歌词显示</h3><label class="settings-row"><span>歌词区域高度 <output id="lyric-area-size-value">${preferences.lyricAreaSize}%</output></span><input type="range" id="lyric-area-size" aria-label="歌词区域高度" min="40" max="100" step="5" value="${preferences.lyricAreaSize}"></label><p class="quality-note">窗口较小时会保留最低阅读高度，保证歌词和进度条可见。</p></section>
     <section class="panel-section" data-settings-group="appearance"><h3>键盘操作</h3><label class="settings-row"><span>导航按键切换时同步播放</span><input type="checkbox" id="keyboard-sync-playback" aria-label="方向键切换时同步播放" ${preferences.keyboardSyncPlayback ? "checked" : ""}></label>${keybindingsMarkup(preferences.keybindings)}</section>
@@ -3071,6 +3080,13 @@ document.addEventListener("change", (e) => {
     savePrefs();
     return;
   }
+  if ((e.target as HTMLElement).id === 'close-behavior') {
+    const value = (e.target as HTMLSelectElement).value;
+    preferences.closeBehavior = value === 'tray' || value === 'exit' ? value : 'ask';
+    void setCloseBehavior(preferences.closeBehavior).catch(error => notify((error as Error).message));
+    savePrefs();
+    return;
+  }
   const el = e.target as HTMLInputElement;
   if (el.id.startsWith('visualizer-')) {
     const options=preferences.visualizer!;
@@ -3246,6 +3262,7 @@ window.addEventListener('rhine-taskbar-action', event => {
   if (action === 'toggle' && playerState.currentTrack) void player.toggle();
   else if (action === 'next') void player.next();
   else if (action === 'previous') void player.previous();
+  else if (action === 'settings') openPanel('settings');
 });
 document.addEventListener('keyup', event => playbackShortcuts.keyup(event));
 window.addEventListener('blur', () => playbackShortcuts.cancel());
@@ -3648,7 +3665,6 @@ async function start() {
       `<strong>启动未能完成</strong><small>${esc((error as Error).message)}</small><button class="primary-button" data-action="retry-startup">重新加载</button><button data-action="settings">打开设置</button>`;
   }
 }
-openPanel("netease-login");
 void start();
 Object.assign(window, {
   rhineMusic: {

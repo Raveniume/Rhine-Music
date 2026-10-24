@@ -13,3 +13,47 @@
 html:has(.music-app[data-theme="night"]) .desktop-chrome { color: #b5bfcc; }
 html:has(.music-app[data-theme="night"]) .desktop-chrome button:not([data-window="close"]):hover { background: rgba(255,255,255,.09); }
 .desktop-folder-button { margin: 8px 0 2px; }
+
+.desktop-close-prompt {
+  position: fixed;
+  inset: 0;
+  z-index: 20000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(18, 24, 22, .28);
+  backdrop-filter: blur(9px) saturate(.84);
+  -webkit-backdrop-filter: blur(9px) saturate(.84);
+}
+.desktop-close-prompt[hidden] { display: none; }
+.desktop-close-dialog {
+  width: min(430px, calc(100vw - 48px));
+  padding: 26px 28px 24px;
+  border: 1px solid rgba(42, 49, 42, .22);
+  background: rgba(239, 237, 231, .97);
+  color: #232722;
+  box-shadow: 0 22px 70px rgba(18, 24, 22, .28);
+}
+.desktop-close-dialog-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.desktop-close-dialog-heading small { display: block; color: #6c776f; font-size: 10px; letter-spacing: .16em; }
+.desktop-close-dialog-heading h2 { margin: 7px 0 0; font-size: 24px; font-weight: 600; line-height: 1.2; }
+.desktop-close-dialog-heading > button { flex: 0 0 30px; width: 30px; height: 30px; border: 1px solid transparent; color: inherit; font-size: 23px; line-height: 1; }
+.desktop-close-dialog-heading > button:hover, .desktop-close-dialog-heading > button:focus-visible { border-color: currentColor; outline: none; }
+.desktop-close-dialog > p { margin: 22px 0 16px; color: #5e6962; font-size: 13px; line-height: 1.65; }
+.desktop-close-remember { display: inline-flex; align-items: center; gap: 9px; color: #4b5951; font-size: 12px; cursor: pointer; }
+.desktop-close-remember input { width: 16px; height: 16px; margin: 0; accent-color: #0b928d; }
+.desktop-close-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
+.desktop-close-actions button { min-height: 36px; padding: 8px 13px; border: 1px solid rgba(42, 49, 42, .22); color: #354139; background: rgba(255,255,255,.42); font-size: 12px; }
+.desktop-close-actions button:hover, .desktop-close-actions button:focus-visible { border-color: #0b928d; outline: none; }
+.desktop-close-actions .primary-button { border-color: #232722; background: #232722; color: #efede7; }
+.desktop-close-actions .primary-button:hover, .desktop-close-actions .primary-button:focus-visible { border-color: #0b928d; background: #0b928d; }
+html:has(.music-app[data-theme="night"]) .desktop-close-prompt { background: rgba(4, 9, 16, .52); }
+html:has(.music-app[data-theme="night"]) .desktop-close-dialog { border-color: rgba(208,226,243,.2); background: rgba(22,34,52,.97); color: #e9eef2; }
+html:has(.music-app[data-theme="night"]) .desktop-close-dialog-heading small,
+html:has(.music-app[data-theme="night"]) .desktop-close-dialog > p,
+html:has(.music-app[data-theme="night"]) .desktop-close-remember { color: #aebdca; }
+html:has(.music-app[data-theme="night"]) .desktop-close-actions button { border-color: rgba(208,226,243,.2); color: #e9eef2; background: rgba(255,255,255,.06); }
+html:has(.music-app[data-theme="night"]) .desktop-close-actions .primary-button { border-color: #e9eef2; background: #e9eef2; color: #162234; }
+@media (prefers-reduced-motion: reduce) {
+  .desktop-close-prompt { backdrop-filter: none; -webkit-backdrop-filter: none; }
+}

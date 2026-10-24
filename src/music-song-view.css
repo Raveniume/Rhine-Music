@@ -1,6 +1,7 @@
 #song-view { margin-top: 24px; }
-.song-view-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 24px; }
-#song-toggle-stop { display: inline-flex; gap: 11px; align-items: center; min-height: 44px; padding: 10px 12px; margin-left: -12px; border: 0; border-radius: 10px; color: var(--ink); background: transparent; cursor: pointer; transition: color .18s ease, background .18s ease; }
+.song-view-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 44px; margin-bottom: 24px; }
+.song-primary-actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
+#song-toggle-stop { display: inline-flex; gap: 11px; align-items: center; min-height: 44px; padding: 10px 12px; margin-left: 0; border: 0; border-radius: 10px; color: var(--ink); background: transparent; cursor: pointer; transition: color .18s ease, background .18s ease; }
 #song-toggle-stop:hover { color: var(--accent); background: color-mix(in srgb, var(--ink) 5%, transparent); }
 #song-toggle-stop:focus-visible, .song-step-buttons button:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
 #song-toggle-stop svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; }
@@ -68,6 +69,9 @@
 .song-step-buttons button[data-action="playing-prev"]:hover svg { transform: translateX(-2px); }
 .song-step-buttons button[data-action="playing-next"]:hover svg { transform: translateX(2px); }
 .song-step-buttons button:disabled { opacity: .35; cursor: default; }
+.song-add-playlist { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--accent); background: color-mix(in srgb, var(--accent) 5%, transparent); font-size: 12px; cursor: pointer; transition: color .18s ease, border-color .18s ease, background .18s ease; }
+.song-add-playlist svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
+.song-add-playlist:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .lyric-transport { margin-top: 16px; }
 .lyric-line:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
 #song-lyrics { scrollbar-width: none; }
@@ -92,6 +96,7 @@
 .music-app.reduce-motion .playback-seek::-webkit-slider-thumb { transition: none; }
 .music-app.reduce-motion .playback-seek::-moz-range-thumb { transition: none; }
 .music-app.reduce-motion .lyric-line { transition: none; }
+.music-app.reduce-motion .song-view-tab-indicator { transition: none; }
 
 .lyric-order-row { display: flex; justify-content: flex-start; margin-bottom: 5px; }
 .lyric-playback-mode { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; flex: 0 0 34px; width: 34px; height: 32px; padding: 5px; border: 0; background: transparent; color: var(--muted); cursor: pointer; transition: color .18s ease, opacity .18s ease; }
@@ -102,17 +107,19 @@
 .lyric-playback-mode:is([data-mode="repeat-one"], [data-mode="shuffle"]) { color: var(--accent); }
 .music-app.reduce-motion .lyric-playback-mode { transition: none; }
 
-.song-view-tabs { display: flex; gap: 26px; flex-shrink: 0; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
+.song-view-tabs { position: relative; display: flex; gap: 26px; flex-shrink: 0; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
 .song-view-tabs button { position: relative; min-height: 40px; padding: 8px 0 12px; border: 0; background: transparent; color: var(--muted); font-size: 13px; cursor: pointer; }
 .song-view-tabs button[aria-selected="true"] { color: var(--ink); font-weight: 600; }
-.song-view-tabs button[aria-selected="true"]::after { content: ''; position: absolute; height: 2px; inset: auto 0 -1px; background: var(--accent); }
+.song-view-tabs button[aria-selected="true"]::after { content: none; }
+.song-view-tab-indicator { position: absolute; left: 0; bottom: -1px; width: 1px; height: 2px; background: var(--accent); transform-origin: left center; transition: transform .24s cubic-bezier(.22, 1, .36, 1); pointer-events: none; }
 .song-view-tabs button:hover { color: var(--ink); }
 .song-view-tabs button:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
 
 /* Use the panel's real remaining space, rather than width alone. Long titles
    and user height preferences must not consume the entire lyric viewport. */
 #album-detail-content:has(#song-view[data-lyrics-active="true"]) > h1 {
-  font-size: clamp(22px, min(2.5vw, 5cqh), 36px);
+  font-size: clamp(24px, 2.45vw, 39px);
+  line-height: 1.22;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
   overflow: hidden;
 }
@@ -128,6 +135,7 @@
   .song-view-tabs button { min-height: 34px; padding: 6px 0 9px; }
   .song-view-heading { gap: 8px; margin-bottom: 8px; }
   #song-toggle-stop, .song-step-buttons button { min-height: 36px; padding-top: 6px; padding-bottom: 6px; }
+  .song-add-playlist { min-height: 32px; padding-top: 5px; padding-bottom: 5px; }
   .lyric-transport { margin-top: 8px; }
 }
 @container song-detail (max-height: 460px) {

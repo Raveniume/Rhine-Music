@@ -76,8 +76,8 @@ function fixture({ renderScene = true, firstMs = 0, reduced = false, speed = 1, 
     const songView = { setVisible() {}, dispose() {} };
     const visualizer = { setHidden() {}, dispose() {} }, titleMotion = {setRapid(){}}, tryEnterPlaylistOverview = () => {};
     const together = {dispose(){}}, playlistManager = {dispose(){}}, onlineDebug = {dispose(){}}, lyricSettingsPreview = {dispose(){}};
-    let disposeKeybindingEditor, queueViewUI, loadingOpening;
-    const playlistSongBars = {destroy(){}}, keyboardPlayback = {cancel(){}}, playbackShortcuts = {dispose(){},cancel(){}}, startup = {cancel(){}};
+    let disposeKeybindingEditor, disposeVisualizerColor, queueViewUI, loadingOpening;
+    const playlistSongBars = {destroy(){}}, keyboardPlayback = {cancel(){}}, playbackShortcuts = {dispose(){},cancel(){}}, startup = {cancel(){}}, transportVolume = { dispose() {} };
     const disposePlatformLogin = () => {}, displayVersion = appVersion;
     const pendingDetailFocus = false, pendingTrackReveal = undefined, panel = undefined;
     let playlistRefreshDeferred = false;

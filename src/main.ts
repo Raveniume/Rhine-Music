@@ -11,7 +11,9 @@ document.addEventListener("dragstart", (event) => {
 
 // Preserve the original experience as a visual reference while developing music mode.
 const params = new URLSearchParams(location.search);
-if (params.get("taskbar") === "1") {
+if (params.get("tray") === "1") {
+  void import("./tray-controls");
+} else if (params.get("taskbar") === "1") {
   void import("./taskbar-lyrics");
 } else if (params.get("original") === "1") {
   void import("./archive-main");

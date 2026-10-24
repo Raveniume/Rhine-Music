@@ -24,7 +24,7 @@ export const orderIcons = {
   'repeat-one': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 10V9A3.5 3.5 0 0 1 7 5.5h12.5M17 3l2.5 2.5L17 8M20.5 14v1a3.5 3.5 0 0 1-3.5 3.5H4.5M7 16l-2.5 2.5L7 21"/><path class="repeat-one-digit" d="m10.6 10.4 1.8-1v5.2m-1.8 0h3.2"/></svg>',
 };
 
-export const songViewTabsMarkup = (together = false) => `<nav class="song-view-tabs" role="tablist" aria-label="歌曲内容"><button type="button" role="tab" id="song-tab-info" data-song-view-tab="info" aria-controls="song-info" aria-selected="false" tabindex="-1">歌曲详情</button><button type="button" role="tab" id="song-tab-lyrics" data-song-view-tab="lyrics" aria-controls="song-lyric-view" aria-selected="true" tabindex="0">歌词列表</button>${together ? '<button type="button" role="tab" id="song-tab-together" data-song-view-tab="together" aria-controls="song-together-view" aria-selected="false" tabindex="-1">一起听</button>' : ''}</nav>`;
+export const songViewTabsMarkup = (together = false) => `<nav class="song-view-tabs" role="tablist" aria-label="歌曲内容"><button type="button" role="tab" id="song-tab-info" data-song-view-tab="info" aria-controls="song-info" aria-selected="false" tabindex="-1">歌曲详情</button><button type="button" role="tab" id="song-tab-lyrics" data-song-view-tab="lyrics" aria-controls="song-lyric-view" aria-selected="true" tabindex="0">歌词列表</button>${together ? '<button type="button" role="tab" id="song-tab-together" data-song-view-tab="together" aria-controls="song-together-view" aria-selected="false" tabindex="-1">一起听</button>' : ''}<i class="song-view-tab-indicator" aria-hidden="true"></i></nav>`;
 
 type CachedSong = { info?: OnlineSongInfo; error?: string; at: number; lyricAt: number; lines: LyricLine[]; document?: LyricDocument };
 
@@ -60,6 +60,16 @@ export class MusicSongView {
     this.amll?.setVisible(this.visible && !this.desktopHidden && this.detailActive && this.tab === "lyrics");
   };
 
+  private syncTabIndicator(animate = true) {
+    const root = document.querySelector<HTMLElement>('#song-view');
+    const tabs = root?.querySelector<HTMLElement>('.song-view-tabs');
+    const active = tabs?.querySelector<HTMLButtonElement>('[aria-selected="true"]');
+    const indicator = tabs?.querySelector<HTMLElement>('.song-view-tab-indicator');
+    if (!tabs || !active || !indicator) return;
+    indicator.style.transition = animate && !this.reduced() ? '' : 'none';
+    indicator.style.transform = `translateX(${active.offsetLeft}px) scaleX(${active.offsetWidth})`;
+  }
+
   constructor(private mini: HTMLElement, private seek: (seconds: number) => void, private reduced: () => boolean = () => false, private onTab?: (tab: string) => void) {
     window.addEventListener("rhine-desktop-visibility", this.onDesktopVisibility);
   }
@@ -68,18 +78,19 @@ export class MusicSongView {
     const track = album.tracks[0];
     if (!track) return '';
     const togetherEnabled = track.onlineSource?.provider === 'netease' && import.meta.env.VITE_PUBLIC_RELEASE !== '1';
-    return `<section id="song-view" data-song="${esc(track.id)}" data-lyrics-active="true">
+    return `<section id="song-view" data-song="${esc(track.id)}" data-song-tab="lyrics" data-lyrics-active="true">
+      <div class="song-view-heading"><div class="song-primary-actions"><button type="button" data-action="song-toggle-stop" id="song-toggle-stop">${play}<span data-song-reveal>开始播放</span></button>${track.onlineSource ? '<button type="button" class="song-add-playlist" data-action="song-add-playlist" aria-label="添加到歌单"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16M4 12h16"/></svg><span>加入歌单</span></button>' : ''}</div><div class="song-step-buttons"><button type="button" data-action="playing-prev" aria-label="上一首">${previousArrow}<span data-song-reveal>上一首</span></button><button type="button" data-action="playing-next" aria-label="下一首"><span data-song-reveal>下一首</span>${nextArrow}</button></div></div>
       ${songViewTabsMarkup(togetherEnabled)}
-      <div class="song-view-heading"><button type="button" data-action="song-toggle-stop" id="song-toggle-stop">${play}<span data-song-reveal>开始播放</span></button><div class="song-step-buttons"><button type="button" data-action="playing-prev" aria-label="上一首">${previousArrow}<span data-song-reveal>上一首</span></button><button type="button" data-action="playing-next" aria-label="下一首"><span data-song-reveal>下一首</span>${nextArrow}</button></div></div>
-      <section id="song-info" role="tabpanel" aria-labelledby="song-tab-info" hidden>${track.onlineSource ? '<button type="button" class="text-button" data-action="song-add-playlist">＋ 添加到歌单</button>' : ''}<dl id="song-facts"></dl><p id="song-description" data-song-reveal></p><p id="song-metadata-error" data-song-reveal role="status"></p></section>
+      <section id="song-info" role="tabpanel" aria-labelledby="song-tab-info" hidden><dl id="song-facts"></dl><p id="song-description" data-song-reveal></p><p id="song-metadata-error" data-song-reveal role="status"></p></section>
       <section id="song-lyric-view" role="tabpanel" aria-labelledby="song-tab-lyrics"><div class="lyric-window"><div id="song-lyrics" role="region" aria-label="同步歌词" tabindex="0"></div></div>
         <div class="lyric-transport">
-          <div class="lyric-order-row"><button type="button" class="lyric-playback-mode" data-action="cycle-playback-mode" aria-label="顺序播放" title="顺序播放">${orderIcons.sequential}</button>${track.onlineSource ? '<button type="button" class="song-add-playlist" data-action="song-add-playlist" aria-label="添加到歌单"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16M4 12h16"/></svg></button>' : ''}</div>
+          <div class="lyric-order-row"><button type="button" class="lyric-playback-mode" data-action="cycle-playback-mode" aria-label="顺序播放" title="顺序播放">${orderIcons.sequential}</button></div>
           <input class="playback-seek" type="range" min="0" max="1" value="0" step="0.1" aria-label="歌曲播放进度" disabled><div class="song-time"><span data-elapsed data-song-reveal>0:00</span><span data-duration data-song-reveal>${clock(track.duration)}</span></div>
         </div></section>${togetherEnabled ? '<section id="song-together-view" role="tabpanel" aria-labelledby="song-tab-together" hidden></section>' : ''}<p id="song-view-error" data-song-reveal role="status"></p></section>`;
   }
 
   mount(album: MusicAlbum, state: MusicPlayerState, detailActive: boolean) {
+    const replacingVisibleSong = this.detailActive && detailActive && !!this.detailTrack;
     this.reveal.reset();
     this.viewEvents?.abort(); this.viewEvents = new AbortController(); if (this.tab !== "together") this.tab = "lyrics";
     const tabs = document.querySelector<HTMLElement>("#song-view .song-view-tabs");
@@ -99,6 +110,11 @@ export class MusicSongView {
     this.lyricEvents?.abort(); this.lyricNode = undefined;
     this.detailTrack = album.tracks[0]; this.paintedInfo = undefined; this.lyricKey = ''; this.desktopLyricKey = '';
     this.update(state, detailActive);
+    const root = document.querySelector<HTMLElement>('#song-view');
+    if (replacingVisibleSong && root) {
+      root.dataset.quickSwitch = 'true';
+      requestAnimationFrame(() => { if (root.isConnected) delete root.dataset.quickSwitch; });
+    }
   }
 
   selectTab(tab: "info" | "lyrics" | "together") {
@@ -117,7 +133,8 @@ export class MusicSongView {
 
   update(state: MusicPlayerState, detailActive: boolean) {
     if (this.disposed) return;
-    const enteringDetail = detailActive && !this.detailActive;
+    const wasDetailActive = this.detailActive;
+    const enteringDetail = detailActive && !wasDetailActive;
     if (enteringDetail) this.tab = "lyrics";
     if (this.detailActive !== detailActive) this.lyricKey = '';
     if (this.drag && this.drag.trackId !== state.currentTrack?.id) this.drag = undefined;
@@ -156,6 +173,7 @@ export class MusicSongView {
         const selected = tab.dataset.songViewTab === this.tab;
         tab.setAttribute('aria-selected', String(selected)); tab.tabIndex = selected ? 0 : -1;
       }
+      this.syncTabIndicator(viewChanged && wasDetailActive);
       if (!showLyrics || !detailActive) this.lyricScroll?.stop();
       this.amll?.setVisible(this.visible && !this.desktopHidden && detailActive && showLyrics);
       this.amll?.setReducedMotion(this.reduced());
@@ -164,7 +182,10 @@ export class MusicSongView {
       const lyricContent = root.querySelector<HTMLElement>('#song-lyrics')!.dataset.content;
       if (showLyrics && detailActive && !root.closest('[hidden]')) this.paintLyrics(root.querySelector('#song-lyrics')!, info, selectedActive ? state.currentTime : 0, detailTrack);
       if (revealChanged || enteringDetail || lyricContent !== root.querySelector<HTMLElement>('#song-lyrics')!.dataset.content || this.lastReduced !== this.reduced()) {
-        this.lastReduced = this.reduced(); this.reveal.refresh(root, this.lastReduced, enteringDetail || viewChanged);
+        this.lastReduced = this.reduced();
+        // A detail-to-detail song switch replaces text while the surface is
+        // already visible; page-entry masks would otherwise flash on every song.
+        this.reveal.refresh(root, this.lastReduced, enteringDetail || viewChanged || !wasDetailActive);
       }
       if (detailTrack.onlineSource) this.ensure(detailTrack);
     }

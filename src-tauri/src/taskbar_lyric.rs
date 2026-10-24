@@ -103,24 +103,117 @@ pub fn action(app: AppHandle, action: String) -> Result<(), String> {
     .map_err(|e| e.to_string())
 }
 
+#[tauri::command(rename = "desktop_tray_action")]
+pub fn tray_action(app: AppHandle, action: String) -> Result<(), String> {
+    match action.as_str() {
+        "hide" => {
+            if let Some(window) = app.get_webview_window("tray-controls") {
+                window.hide().map_err(|e| e.to_string())?;
+            }
+            Ok(())
+        }
+        "show" => {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+            Ok(())
+        }
+        "settings" => app.emit_to("main", "rhine-taskbar-action", serde_json::json!({ "action": "settings" })).map_err(|e| e.to_string()),
+        "toggle" | "next" | "previous" => app.emit_to("main", "rhine-taskbar-action", serde_json::json!({ "action": action })).map_err(|e| e.to_string()),
+        _ => Err("未知的托盘操作".into()),
+    }
+}
+
+pub fn setup_tray_controls(app: &AppHandle, service_url: &tauri::Url) -> Result<(), String> {
+    let mut tray_url = service_url.clone();
+    tray_url.set_query(Some("desktop=1&tray=1"));
+    WebviewWindowBuilder::new(app, "tray-controls", WebviewUrl::External(tray_url))
+        .title("RhineMusic")
+        .inner_size(360.0, 190.0)
+        .min_inner_size(320.0, 170.0)
+        .decorations(false)
+        .transparent(true)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .focused(false)
+        .visible(false)
+        .build()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
 pub fn setup_tray(app: &AppHandle) -> Result<(), String> {
     let Some(icon) = app.default_window_icon().cloned() else {
         return Ok(());
     };
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+    let show = MenuItem::with_id(app, "tray-show", "打开 RhineMusic", true, None::<&str>)
+        .map_err(|e| e.to_string())?;
+    let toggle = MenuItem::with_id(app, "tray-toggle", "播放 / 暂停", true, None::<&str>)
+        .map_err(|e| e.to_string())?;
+    let previous = MenuItem::with_id(app, "tray-previous", "上一首", true, None::<&str>)
+        .map_err(|e| e.to_string())?;
+    let next = MenuItem::with_id(app, "tray-next", "下一首", true, None::<&str>)
+        .map_err(|e| e.to_string())?;
+    let controls = MenuItem::with_id(app, "tray-controls", "播放控制浮窗", true, None::<&str>)
+        .map_err(|e| e.to_string())?;
+    let settings = MenuItem::with_id(app, "tray-settings", "设置", true, None::<&str>)
+        .map_err(|e| e.to_string())?;
+    let exit = MenuItem::with_id(app, "tray-exit", "退出 RhineMusic", true, None::<&str>)
+        .map_err(|e| e.to_string())?;
+    let separator = PredefinedMenuItem::separator(app).map_err(|e| e.to_string())?;
+    let menu = Menu::with_items(app, &[&show, &controls, &toggle, &previous, &next, &separator, &settings, &exit])
+        .map_err(|e| e.to_string())?;
     tauri::tray::TrayIconBuilder::with_id("lyrics")
         .icon(icon)
         .title("RhineMusic")
         .tooltip("RhineMusic")
+        .menu(&menu)
         .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| {
+            let action = match event.id().as_ref() {
+                "tray-show" => None,
+                "tray-controls" => {
+                    if let Some(window) = app.get_webview_window("tray-controls") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                    None
+                }
+                "tray-toggle" => Some("toggle"),
+                "tray-previous" => Some("previous"),
+                "tray-next" => Some("next"),
+                "tray-settings" => Some("settings"),
+                "tray-exit" => {
+                    crate::EXITING.store(true, Ordering::Release);
+                    app.exit(0);
+                    None
+                }
+                _ => None,
+            };
+            if event.id().as_ref() == "tray-show" {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.unminimize();
+                    let _ = window.set_focus();
+                }
+            } else if let Some(action) = action {
+                let _ = app.emit_to("main", "rhine-taskbar-action", serde_json::json!({ "action": action }));
+            }
+        })
         .on_tray_icon_event(|tray, event| {
-            if matches!(
-                event,
-                tauri::tray::TrayIconEvent::Click { .. }
-                    | tauri::tray::TrayIconEvent::DoubleClick { .. }
-            ) {
+            if matches!(event, tauri::tray::TrayIconEvent::DoubleClick { button: tauri::tray::MouseButton::Left, .. }) {
                 if let Some(window) = tray.app_handle().get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.unminimize();
+                    let _ = window.set_focus();
+                }
+            } else if matches!(event, tauri::tray::TrayIconEvent::Click { button: tauri::tray::MouseButton::Left, .. }) {
+                if let Some(window) = tray.app_handle().get_webview_window("tray-controls") {
+                    let _ = window.show();
                     let _ = window.set_focus();
                 }
             }
