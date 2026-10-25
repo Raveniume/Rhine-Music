@@ -58,7 +58,7 @@ jobs:
             if(actual!==expected)throw Error('Artifact checksum mismatch');
           }
           const log=fs.readFileSync('CHANGELOG.md','utf8');
-          const section=log.split(/^## /m).find(s=>s.startsWith(version));
+          const section=log.split(/^## /m).find(s=>s.split(/\r?\n/)[0].includes(`· ${version} ·`));
           if(!section)throw Error('Missing changelog');
           fs.writeFileSync('/tmp/release-notes.md','## '+section.trim()+'\n\nWindows x64 安装包与 macOS DMG 使用同一次成功构建的原始产物。macOS 仅完成原生构建，未进行实机界面验收。\n');
           JS
