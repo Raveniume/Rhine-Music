@@ -1,0 +1,66 @@
+name: Publish verified desktop artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful desktop build workflow run
+        required: true
+      version:
+        description: Version without v prefix
+        required: true
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  draft:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate completed build
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.run_id }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]] && [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" > /tmp/build.json
+          jq -e '.conclusion == "success" and .path == ".github/workflows/release-desktop.yml"' /tmp/build.json
+          echo "sha=$(jq -r .head_sha /tmp/build.json)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.run_id }}
+          path: release-assets
+          merge-multiple: true
+      - name: Create reviewable release draft from exact tested binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          test "$(node -p "require('./package.json').version")" = "$VERSION"
+          test -f "release-assets/Rhine-Music-Windows-$VERSION-x64-Setup.exe"
+          test -f "release-assets/Rhine-Music-macOS-$VERSION.dmg"
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import {createHash} from 'node:crypto';
+          const version=process.env.VERSION;
+          for(const suffix of [`Windows-${version}-x64-Setup.exe`,`macOS-${version}.dmg`]) {
+            const file=`release-assets/Rhine-Music-${suffix}`;
+            const expected=fs.readFileSync(file+'.sha256','utf8').split(/\s+/)[0];
+            const actual=createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+            if(actual!==expected)throw Error('Artifact checksum mismatch');
+          }
+          const log=fs.readFileSync('CHANGELOG.md','utf8');
+          const section=log.split(/^## /m).find(s=>s.startsWith(version));
+          if(!section)throw Error('Missing changelog');
+          fs.writeFileSync('/tmp/release-notes.md','## '+section.trim()+'\n\nWindows x64 安装包与 macOS DMG 使用同一次成功构建的原始产物。macOS 仅完成原生构建，未进行实机界面验收。\n');
+          JS
+          gh release create "v$VERSION" --target "$SOURCE_SHA" --draft --title "RhineMusic $VERSION" --notes-file /tmp/release-notes.md
+          gh release upload "v$VERSION" release-assets/*
