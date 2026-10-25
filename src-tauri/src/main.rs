@@ -66,6 +66,12 @@ fn apply_close_behavior(app: &tauri::AppHandle, behavior: CloseBehavior) -> Resu
             .map_err(|error| error.to_string()),
         CloseBehavior::Exit => {
             EXITING.store(true, Ordering::Release);
+            if let Some(window) = app.get_webview_window("main") {
+                // Stop both HTML media and Web Audio before the native process
+                // exits. app.exit() can terminate WebView2 before pagehide,
+                // which otherwise leaves a short-lived background sound.
+                let _ = window.eval("window.dispatchEvent(new CustomEvent('rhine-app-exiting'))");
+            }
             if let Some(taskbar) = app.get_webview_window("taskbar-lyrics") {
                 let _ = taskbar.close();
             }

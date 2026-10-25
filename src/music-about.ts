@@ -27,7 +27,7 @@ export async function checkForUpdates(current: string, interactive = true) {
     const checksum = assets.find(asset => asset.name === `${installer?.name}.sha256`);
     if (!installer?.browser_download_url) { if (status) status.textContent = `发现 V${remote}，但仓库还没有可用 Windows 安装包。`; return false; }
     if (status) status.textContent = `发现新版本 V${remote}`;
-    if (!interactive || !window.confirm(`RhineMusic 有新版本 V${remote}，是否下载并安装？`)) return true;
+    if (!interactive || !(await askUpdate(`RhineMusic 有新版本 V${remote}，是否下载并安装？`))) return true;
     if (!window.__TAURI_INTERNALS__) { window.open(installer.browser_download_url, '_blank', 'noopener'); return true; }
     // GitHub's asset digest arrives over the native release request, avoiding
     // a cross-origin checksum download from the local WebView origin.
@@ -44,6 +44,23 @@ export async function checkForUpdates(current: string, interactive = true) {
     if (status) status.textContent = `检查更新失败：${String(error)}`;
     return false;
   }
+}
+
+function askUpdate(message: string) {
+  return new Promise<boolean>(resolve => {
+    document.querySelector<HTMLElement>('.update-confirm-scrim')?.remove();
+    const scrim = document.createElement('div');
+    scrim.className = 'update-confirm-scrim';
+    scrim.innerHTML = `<section class="update-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="update-confirm-title"><small>RHINE MUSIC / UPDATE</small><h2 id="update-confirm-title">发现新版本</h2><p>${message}</p><div class="update-confirm-actions"><button type="button" data-update-choice="cancel">稍后</button><button type="button" class="primary-button" data-update-choice="confirm">下载并安装</button></div></section>`;
+    document.body.append(scrim);
+    const finish = (value: boolean) => { scrim.remove(); resolve(value); };
+    scrim.addEventListener('click', event => {
+      const choice = (event.target as HTMLElement).closest<HTMLElement>('[data-update-choice]')?.dataset.updateChoice;
+      if (choice === 'confirm') finish(true);
+      else if (choice === 'cancel' || event.target === scrim) finish(false);
+    });
+    scrim.querySelector<HTMLButtonElement>('[data-update-choice="confirm"]')?.focus();
+  });
 }
 
 declare global { interface Window { __TAURI_INTERNALS__?: unknown } }

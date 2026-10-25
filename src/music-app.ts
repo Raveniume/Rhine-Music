@@ -143,6 +143,7 @@ const displayVersion = previewLabel ? runtimeVersion : appVersion;
 const preferences = {
   ...{
     theme: "day" as Theme,
+    followSystemTheme: false,
     sortMode: "genre" as MusicSortMode,
     arrayMode: "filled" as MusicArrayMode,
     modelLooping: true,
@@ -180,6 +181,7 @@ const preferences = {
   ...read<
     Partial<{
       theme: Theme;
+      followSystemTheme: boolean;
       sortMode: MusicSortMode;
       arrayMode: MusicArrayMode;
       modelLooping: boolean;
@@ -253,6 +255,7 @@ if (!["day", "night"].includes(preferences.theme)) {
   preferences.theme = "day";
   save("rhine-music-preferences", preferences);
 }
+preferences.followSystemTheme = preferences.followSystemTheme === true;
 if (!Object.hasOwn(qualityPresets, preferences.quality))
   preferences.quality = "original";
 if (!["genre", "artist", "album"].includes(preferences.sortMode))
@@ -353,6 +356,12 @@ const player = new MusicPlayer({
   bgmEnabled: preferences.bgm,
   bgmVolume: preferences.bgmVolume,
 });
+window.addEventListener('rhine-app-exiting', () => {
+  // Native app.exit can bypass WebView2's pagehide event. Stop every audio
+  // source explicitly so a full exit never leaves BGM or a song running.
+  player.dispose();
+  effects.dispose();
+}, { once: true });
 const themeNames: Record<Theme, string> = {
   day: "暖昼",
   night: "深夜",
@@ -572,13 +581,16 @@ async function openPlaylistDetail(row: number, offset = 0) {
   if (!playlist || !accountActive) return;
   const epoch = ++playlistDetailEpoch, key = accountKey;
   if (overview) setOverview(false);
-  await navigatePlaylist(row, offset);
-  if (epoch !== playlistDetailEpoch || key !== accountKey) return;
   playlistDetail = { row, offset, loading: true, error: '' };
+  // Paint the playlist shell immediately. The 3D selection and remote page
+  // fetch continue in parallel, so the detail surface never waits on camera
+  // settling before showing useful content.
   renderDetail();
   if (!presentation.openingOrDetail) presentation.open();
+  const navigation = navigatePlaylist(row, offset);
   try { await playlistLibrary.ensure(row, offset, true); }
   catch (error) { if (epoch === playlistDetailEpoch && playlistDetail) playlistDetail.error = (error as Error).message; }
+  await navigation;
   if (epoch !== playlistDetailEpoch || key !== accountKey || !playlistDetail) return;
   playlistDetail.loading = false;
   renderDetail();
@@ -840,6 +852,11 @@ function setTheme(theme: Theme) {
     ?.setAttribute("content", theme === "night" ? "#0a1220" : "#e8e5e1");
   savePrefs();
 }
+function systemTheme(): Theme { return matchMedia('(prefers-color-scheme: dark)').matches ? 'night' : 'day'; }
+function applySystemTheme() { if (preferences.followSystemTheme) setTheme(systemTheme()); }
+const systemThemeMedia = matchMedia('(prefers-color-scheme: dark)');
+systemThemeMedia.addEventListener?.('change', applySystemTheme);
+if (preferences.followSystemTheme) setTheme(systemTheme());
 function fit() {
   // Use the same stage dimensions and aspect boundary as the scene framing.
   stage.dataset.layout = viewportLayout(stage.clientWidth, stage.clientHeight, false).kind;
@@ -2020,7 +2037,7 @@ const platformLogins: Record<MusicProvider, NeteaseLogin> = {
 function disposePlatformLogin() { Object.values(platformLogins).forEach(login => login.dispose()); }
 function renderLoginPanel() {
   disposePlatformLogin();
-  $("#panel-body").innerHTML = `<section class="netease-login dedicated-login"></section>`;
+  $("#panel-body").innerHTML = `<div class="login-provider-tabs" role="tablist" aria-label="音乐平台"><button type="button" data-login-provider="netease" aria-selected="${loginProvider === 'netease'}">网易云音乐</button><button type="button" data-login-provider="qq" aria-selected="${loginProvider === 'qq'}">QQ 音乐</button></div><section class="netease-login dedicated-login"></section>`;
   platformLogins[loginProvider].mount($(".dedicated-login"), true);
 }
 function rememberSearchShelf() {
@@ -2460,7 +2477,7 @@ function renderSettingsPanel() {
   disposeVisualizerColor?.(); disposeVisualizerColor = undefined;
   lyricSettingsPreview.stop();
   $("#panel-body").innerHTML =
-    `<section class="panel-section" data-settings-group="appearance"><h3>外观主题</h3><div class="theme-cards">${(["day", "night"] as Theme[]).map((t) => `<button data-theme="${t}" aria-pressed="${preferences.theme === t}" class="${t}"><i></i><strong>${themeNames[t]}</strong><span>${t === "day" ? "暖白玻璃与日光" : "极简星空与透光白卡"}</span></button>`).join("")}</div></section>
+    `<section class="panel-section" data-settings-group="appearance"><h3>外观主题</h3><label class="settings-row theme-follow-system"><span>跟随系统</span><input type="checkbox" id="follow-system-theme" ${preferences.followSystemTheme ? "checked" : ""}></label><div class="theme-cards" aria-disabled="${preferences.followSystemTheme}">${(["day", "night"] as Theme[]).map((t) => `<button data-theme="${t}" aria-pressed="${preferences.theme === t}" ${preferences.followSystemTheme ? 'disabled' : ''} class="${t}"><i></i><strong>${themeNames[t]}</strong><span>${t === "day" ? "暖白玻璃与日光" : "极简星空与透光白卡"}</span></button>`).join("")}</div></section>
     <section class="panel-section" data-settings-group="appearance"><h3>启动体验</h3><label class="settings-row"><span>启动时展示元素滚动</span><input type="checkbox" id="startup-opening" aria-label="启动时展示元素滚动" ${preferences.startupOpening ? "checked" : ""}></label><p class="quality-note">日常启动只显示三维元素滚动；关闭后直接进入档案架。安装包首次启动会播放完整开场，在此处选择“观看完整启动动画”可随时重播。</p></section>
     <section class="panel-section" data-settings-group="appearance"><h3>关闭行为</h3><label class="settings-row"><span>点击关闭按钮时</span><select id="close-behavior" aria-label="点击关闭按钮时"><option value="ask" ${preferences.closeBehavior === 'ask' ? 'selected' : ''}>每次询问</option><option value="tray" ${preferences.closeBehavior === 'tray' ? 'selected' : ''}>最小化到托盘</option><option value="exit" ${preferences.closeBehavior === 'exit' ? 'selected' : ''}>彻底退出</option></select></label><p class="quality-note">托盘模式会继续播放音乐，并保留任务栏歌词与播放控制。</p></section>
     ${visualizerMarkup(preferences.visualizer!)}
@@ -3174,6 +3191,13 @@ document.addEventListener("change", (e) => {
     const view = document.querySelector<HTMLButtonElement>('[data-action="show-online-errors"]');
     if (view) view.disabled = !el.checked;
     savePrefs();
+  }
+  if (el.id === 'follow-system-theme') {
+    preferences.followSystemTheme = el.checked;
+    if (el.checked) setTheme(systemTheme());
+    savePrefs();
+    renderSettingsPanel();
+    return;
   }
   if (el.id === "music-array-mode") {
     preferences.arrayMode = normalizeMusicArrayMode(el.value);

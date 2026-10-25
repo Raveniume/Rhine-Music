@@ -28,13 +28,13 @@ function mount() {
   const style = document.createElement('style');
   style.textContent = `
     :root.rhine-taskbar-page, :root.rhine-taskbar-page body { margin:0; width:100%; height:100%; overflow:hidden; background:transparent; color:#17201e; font-family:Inter,\"Segoe UI\",sans-serif; }
-    .taskbar-lyric { box-sizing:border-box; display:flex; align-items:center; gap:12px; width:100%; height:100%; min-height:40px; padding:5px 10px 5px 14px; border:1px solid rgba(23,32,30,.34); background:rgba(242,245,242,.96); box-shadow:0 2px 10px rgba(23,32,30,.18); user-select:none; }
+    .taskbar-lyric { box-sizing:border-box; display:flex; align-items:center; gap:14px; width:100%; height:100%; min-height:52px; padding:6px 12px 6px 16px; border:1px solid rgba(23,32,30,.34); background:rgba(242,245,242,.96); box-shadow:0 2px 10px rgba(23,32,30,.18); user-select:none; }
     .taskbar-copy { min-width:0; flex:1; line-height:1.12; overflow:hidden; }
     .taskbar-copy strong, .taskbar-copy small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .taskbar-copy strong { font-size:15px; font-weight:650; letter-spacing:.01em; }
-    .taskbar-copy small { margin-top:3px; color:#54706a; font-size:11px; }
+    .taskbar-copy strong { font-size:18px; font-weight:650; letter-spacing:.01em; }
+    .taskbar-copy small { margin-top:4px; color:#54706a; font-size:12px; }
     .taskbar-actions { display:flex; flex:none; gap:2px; }
-    .taskbar-actions button { width:28px; height:28px; border:0; padding:0; border-radius:3px; background:transparent; color:#17201e; font-size:21px; line-height:1; cursor:pointer; }
+    .taskbar-actions button { width:32px; height:32px; border:0; padding:0; border-radius:3px; background:transparent; color:#17201e; font-size:24px; line-height:1; cursor:pointer; }
     .taskbar-actions button:hover, .taskbar-actions button:focus-visible { background:#c8ef66; outline:none; }
     .taskbar-lyric[data-state="empty"] { opacity:.72; }
     .taskbar-lyric[data-state="hidden"] { display:none; }

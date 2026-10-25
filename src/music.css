@@ -153,6 +153,8 @@
   padding-top: 7px;
   min-height: 30px;
 }
+.music-topnav > *, .music-topnav .minimal-transport, .music-topnav .minimal-transport > button { box-sizing:border-box; height:32px; min-height:32px; align-items:center; }
+.music-topnav .minimal-transport { margin-top:0; padding-top:0; padding-bottom:0; }
 .music-topnav > button {
   display: flex;
   gap: 7px;
@@ -1247,6 +1249,12 @@
   display: block;
   margin-top: 5px;
 }
+.login-provider-tabs { display:flex; gap:22px; margin-bottom:20px; border-bottom:1px solid var(--line); }
+.login-provider-tabs button { min-height:36px; padding:0 0 10px; border:0; border-bottom:2px solid transparent; background:transparent; color:var(--muted); font:inherit; cursor:pointer; }
+.login-provider-tabs button[aria-selected="true"] { color:var(--ink); border-bottom-color:var(--accent); }
+.theme-follow-system { border-bottom:1px solid var(--line); padding-bottom:16px; }
+.theme-cards[aria-disabled="true"] { opacity:.5; }
+.theme-cards button:disabled { cursor:not-allowed; }
 .settings-row {
   display: flex;
   justify-content: space-between;
@@ -1871,6 +1879,8 @@
 .music-app .music-navigation,
 .music-app .music-bottomline { --content-guide: var(--music-content-left); }
 .music-app .music-header { left: var(--content-guide); right: var(--content-guide); }
+.music-topnav > *, .music-topnav .minimal-transport, .music-topnav .minimal-transport > button { box-sizing:border-box; height:32px; min-height:32px; align-items:center; }
+.music-topnav .minimal-transport { margin-top:0; padding-top:0; padding-bottom:0; }
 .music-app .music-view-toggle,
 .music-app .overview-heading,
 .music-app .library-status,

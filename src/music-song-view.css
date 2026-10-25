@@ -187,6 +187,23 @@
 .playlist-detail-tools + .track-list .track-name strong { font-size: 13px; }
 .playlist-detail-tools + .track-list .track-name small { font-size: 10px; }
 .about-github-link { border: 1px solid var(--line); padding: 8px 12px; }
+.update-confirm-scrim { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 24px; background: rgba(4, 10, 18, .48); backdrop-filter: blur(12px); }
+.update-confirm-dialog { width: min(460px, 100%); box-sizing: border-box; padding: 28px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); box-shadow: 0 24px 70px rgba(0,0,0,.28); }
+.update-confirm-dialog small { color: var(--muted); letter-spacing: 1.8px; }
+.update-confirm-dialog h2 { margin: 10px 0 12px; font-size: 22px; }
+.update-confirm-dialog p { margin: 0; line-height: 1.7; color: var(--muted); }
+.update-confirm-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:24px; }
+.update-confirm-actions button { min-height:36px; padding:8px 14px; border:1px solid var(--line); background:transparent; color:var(--ink); }
+.update-confirm-actions .primary-button { border-color:var(--ink); background:var(--ink); color:var(--page-bg); }
 @media (min-width: 900px) {
   .playlist-detail-tools + .track-list .track-row { padding-block: 7px; }
 }
+.playlist-detail-tools { grid-template-columns: minmax(0, 1fr) 5.5em 3.5em 5.5em; gap: 10px; min-height: 52px; padding: 8px 0; }
+.playlist-detail-tools > button, .playlist-detail-tools > span { height: 34px; display:inline-flex; align-items:center; justify-content:center; }
+.playlist-detail-tools + .track-list .track-row { padding-block: 6px; }
+.music-detail:has(#song-view) .detail-overline { font-size: 12px; letter-spacing: 1.2px; margin-bottom: 12px; }
+.music-detail:has(#song-view) > #album-detail-content > .detail-artist { font-size: 16px; margin-bottom: 12px; line-height:1.45; }
+.music-detail:has(#song-view) .song-view-heading { min-height: 38px; margin-bottom: 12px; }
+#song-toggle-stop { min-height: 36px; padding-block: 5px; }
+#song-view .song-add-playlist { min-height: 36px; padding-block: 5px; }
+.song-view-tabs { margin-bottom: 14px; }

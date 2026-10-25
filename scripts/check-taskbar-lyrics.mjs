@@ -9,8 +9,9 @@ const port = Number(process.env.RHINE_CDP_PORT || 9335);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid RHINE_CDP_PORT');
 const output = path.resolve('artifacts/desktop-ui/taskbar-lyrics-report.json');
 await fs.mkdir(path.dirname(output), { recursive: true });
-const executable = path.resolve(process.env.RHINE_DESKTOP_EXE || 'src-tauri/target/release/rhine-music-windows.exe');
-const child = spawn(executable, [], { windowsHide: true, stdio: 'ignore', env: {
+const executable = path.resolve(process.env.RHINE_DESKTOP_EXE || 'release/Rhine-Music-Windows/Rhine Music.exe');
+const executableDir = path.dirname(executable);
+const child = spawn(executable, [], { cwd: executableDir, windowsHide: true, stdio: 'ignore', env: {
   ...process.env,
   WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
   WEBVIEW2_USER_DATA_FOLDER: path.resolve(`artifacts/taskbar-lyrics-profile-${process.pid}`),
