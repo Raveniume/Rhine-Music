@@ -1028,7 +1028,7 @@ function updateStatus() {
   const n = library.albums.length,
     tracks = library.albums.reduce((sum, a) => sum + a.tracks.length, 0);
   $<HTMLButtonElement>('[data-action="overview"]').hidden = !albums.length;
-  const label = lightingDemo ? "V0.4.2 · 内置演示封面" : !apiAvailable
+  const label = lightingDemo ? "V0.4.3 · 内置演示封面" : !apiAvailable
     ? "本地音乐服务尚未连接"
     : library.scan.running
       ? "正在扫描音乐库…"

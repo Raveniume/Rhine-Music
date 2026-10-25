@@ -21,6 +21,7 @@ await fs.copyFile('src-tauri/target/release/rhine-music-windows.exe', path.join(
 await fs.cp('desktop-runtime', path.join(output, 'runtime'), { recursive: true });
 await fs.copyFile('README.windows.md', path.join(output, 'README.txt'));
 await fs.copyFile('LICENSE', path.join(output, 'LICENSE'));
+await fs.copyFile('PRIVACY.md', path.join(output, 'PRIVACY.md'));
 await fs.copyFile('NOTICE.md', path.join(output, 'NOTICE.md'));
 await fs.copyFile('README.original.md', path.join(output, 'README.original.md'));
 await fs.mkdir(path.join(output, 'docs'), { recursive: true });
