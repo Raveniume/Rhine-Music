@@ -12,7 +12,7 @@ runtimeChecked=true 适用于 Windows 便携程序进程、主 WebView 窗口、
 
 ## 最新检查 · 2026-10-10 Perf21
 
-网易云 API 使用独立 IPv4 dispatcher（family: 4 / autoSelectFamily: false）；保持 SDK 加密模块、固定端点、TLS 校验、Origin / Host 边界、超时、并发队列及三次重试。新增锁定 Undici 7.28.0 与 MIT 许可。设置覆盖窗口并分类，保留原控件 ID 与行为、主题和减少动态效果。深层报错浮层可持久开关，默认关闭；安全诊断仍在内存中保留最近 20 条。反馈固定收件人 2228396737@qq.com，生成用户确认发送的邮件草稿；长度有界，完整诊断可复制 / 保存。
+网易云 API 使用独立 IPv4 dispatcher（family: 4 / autoSelectFamily: false）；保持 SDK 加密模块、固定端点、TLS 校验、Origin / Host 边界、超时、并发队列及三次重试。新增锁定 Undici 7.28.0 与 MIT 许可。设置覆盖窗口并分类，保留原控件 ID 与行为、主题和减少动态效果。深层报错浮层可持久开关，默认关闭；安全诊断仍在内存中保留最近 20 条。诊断只支持本地复制 / 保存，不自动上传或发送。
 
 本次只做类型 / 语法、源代码结构、生产构建、locked 原生编译以及包 / 图标 / PE 字节静态检查；不启动应用 / 浏览器 / WebView / GL / 音频 / 登录，也不执行运行回归或私人账号请求。runtimeChecked=false。先前用户授权的连接探测属独立阶段，用户返回的热点环境两份报告合计 IPv4 10/10 成功，IPv6 9/43 断连，不能把这些结果称为新版热点验收。实现与回退见 WINDOWS-PERF21.md。
 

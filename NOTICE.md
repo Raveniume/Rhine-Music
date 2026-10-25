@@ -6,7 +6,7 @@
 
 2026-10-19 启动片头复用 Twilight Echo 的 [Rhine Lab 扩展 loading-opening](https://github.com/Px-asen/Twilight-Echo-plugins/tree/d1c4b201daec7ac1fe88d8901952ed1a27f1e6d1/plugins/rhine-lab/src/loading-opening)，该扩展标注视觉动画源自 LBEILC/RhineLabUI 提交 `12cc5e4013acb9408f753ff71de6b8492299b7c8`，保留 LBEILC、RonaldDeng 版权及 MIT 许可。完整许可见 [loading-opening-mit.txt](public/licenses/loading-opening-mit.txt)，来源与修改说明见 [src/loading-opening/SOURCE.md](src/loading-opening/SOURCE.md)。Windows 版调整项目文字、启动生命周期、开关、跳过及隐藏窗口行为，复用既有 MiSans，不加入参考视频、原 PV 录音或外部字体。
 
-本衍生版由 **DuoJiuBetter** 维护，基于 RonaldDeng 的音乐适配和 LBEILC 的视觉基础；保留已有版权与许可。当前公开发行包不捆绑 FFmpeg / ffprobe，内置 Node.js 的许可位于 third-party/NODE-LICENSE.txt；原生依赖许可材料随公开包提供。第三方平台、账号与权利反馈详见 [PLATFORM-NOTICE.md](PLATFORM-NOTICE.md)，隐私说明见 [PRIVACY.md](PRIVACY.md)。Windows 版问题及权利联系邮箱为 **2228396737@qq.com**；上游作者不承担本衍生版支持。以下原有署名和资源来源继续保留。
+本衍生版由 **DuoJiuBetter** 维护，基于 RonaldDeng 的音乐适配和 LBEILC 的视觉基础；保留已有版权与许可。当前公开发行包不捆绑 FFmpeg / ffprobe，内置 Node.js 的许可位于 third-party/NODE-LICENSE.txt；原生依赖许可材料随公开包提供。第三方平台、账号与权利反馈详见 [PLATFORM-NOTICE.md](PLATFORM-NOTICE.md)，隐私说明见 [PRIVACY.md](PRIVACY.md)。问题与权利说明请通过 GitHub Issues 提交；上游作者不承担本衍生版支持。以下原有署名和资源来源继续保留。
 
 ## 开发者与上游
 
@@ -67,4 +67,4 @@ QQ 音乐接口参考 [ylw1997/qqmusic-api](https://github.com/ylw1997/qqmusic-a
 
 Wikipedia 摘要、Wikidata 与 MusicBrainz 数据按其来源许可处理。客户端保存介绍时同时保存来源链接、取得时间和许可说明；此类用户自行查询的缓存不纳入项目 MIT 授权，也不进入发布包。MusicBrainz 将核心数据和补充数据分别授权，详见[官方数据许可](https://musicbrainz.org/doc/About/Data_License)；不能仅因为程序开源就统一将数据改授 MIT。
 
-如发现 Windows 社区版署名遗漏或具体权利问题，请联系 **2228396737@qq.com**，按 [PLATFORM-NOTICE.md](PLATFORM-NOTICE.md) 提供涉及文件、来源及说明。上游项目问题可联系对应上游维护者。
+如发现 Windows 社区版署名遗漏或具体权利问题，请通过 GitHub Issues，按 [PLATFORM-NOTICE.md](PLATFORM-NOTICE.md) 提供涉及文件、来源及说明。上游项目问题可联系对应上游维护者。

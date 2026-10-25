@@ -148,8 +148,3 @@ export function mountDesktop() {
   // Restored window state can predate the frontend listeners.
   void invoke<{ fullscreen: boolean; maximized: boolean }>("desktop_window_state").then(syncWindowState).catch(showError);
 }
-
-export async function openFeedbackDraft(url: string) {
-  if (isDesktop()) await invoke('desktop_open_feedback', { url });
-  else window.location.assign(url);
-}

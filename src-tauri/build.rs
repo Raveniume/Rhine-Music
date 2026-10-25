@@ -10,7 +10,6 @@ fn main() {
             "desktop_close_decision",
             "desktop_pick_folder",
             "desktop_open_link",
-            "desktop_open_feedback",
             "desktop_check_update",
             "desktop_install_update",
             "desktop_consume_first_launch",

@@ -1,4 +1,7 @@
 #song-view { margin-top: 24px; }
+.music-detail:has(#song-view) .detail-overline { font-size: 10px; line-height: 1.6; margin-bottom: 16px; }
+.music-detail:has(#song-view) > #album-detail-content > h1 { margin-bottom: 10px; }
+.music-detail:has(#song-view) > #album-detail-content > .detail-artist { margin-bottom: 18px; }
 .song-view-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 48px; margin: 0 0 22px; position: relative; z-index: 2; }
 .song-primary-actions { display: flex; align-items: center; gap: 12px; min-width: max-content; flex: 0 0 auto; }
 #song-toggle-stop { display: inline-flex; flex: 0 0 auto; width: auto; gap: 11px; align-items: center; min-height: 44px; padding: 10px 12px; margin-left: 0; border: 0; border-radius: 10px; color: var(--ink); background: transparent; cursor: pointer; white-space: nowrap; transition: color .18s ease, background .18s ease; }
@@ -78,9 +81,9 @@
 .song-step-buttons button[data-action="playing-prev"]:hover svg { transform: translateX(-2px); }
 .song-step-buttons button[data-action="playing-next"]:hover svg { transform: translateX(2px); }
 .song-step-buttons button:disabled { opacity: .35; cursor: default; }
-#song-view .song-add-playlist { display: inline-flex; flex: 0 0 auto; width: auto; height: auto; margin: 0; align-items: center; gap: 7px; min-height: 36px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--accent); background: color-mix(in srgb, var(--accent) 5%, transparent); font-size: 12px; cursor: pointer; white-space: nowrap; writing-mode: horizontal-tb; transition: color .18s ease, border-color .18s ease, background .18s ease; }
+#song-view .song-add-playlist { display: inline-flex; flex: 0 0 auto; width: auto; height: auto; margin: 0; align-items: center; gap: 7px; min-height: 36px; padding: 7px 0; border: 0; border-radius: 0; color: var(--accent); background: transparent; font-size: 13px; cursor: pointer; white-space: nowrap; writing-mode: horizontal-tb; transition: color .18s ease, opacity .18s ease; }
 .song-add-playlist svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
-.song-add-playlist:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.song-add-playlist:hover { opacity: .72; }
 .lyric-transport { margin-top: 16px; }
 .lyric-line:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
 #song-lyrics { scrollbar-width: none; }
@@ -175,4 +178,15 @@
 }
 .music-app[data-layout="portrait"] .music-detail:has(#song-view)::before { inset-block-start: 34%; }
 .music-app[data-layout="portrait"] .music-detail:has(#song-view) .card-caption { top: calc(38% - 52px); }
-.playlist-detail-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; padding: 16px 0; border-block: 1px solid var(--line); } .playlist-detail-tools > strong { margin-right: auto; }
+.playlist-detail-tools { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: 18px; padding: 13px 0; border-block: 1px solid var(--line); }
+.playlist-detail-tools > strong { min-width: 0; }
+.playlist-detail-tools > span { min-width: 3.5em; text-align: center; font-variant-numeric: tabular-nums; }
+.playlist-detail-tools > button { min-width: 4em; text-align: center; }
+.playlist-detail-tools + .track-list .track-row { padding-block: 8px; }
+.playlist-detail-tools + .track-list .track-name small { margin-top: 3px; }
+.playlist-detail-tools + .track-list .track-name strong { font-size: 13px; }
+.playlist-detail-tools + .track-list .track-name small { font-size: 10px; }
+.about-github-link { border: 1px solid var(--line); padding: 8px 12px; }
+@media (min-width: 900px) {
+  .playlist-detail-tools + .track-list .track-row { padding-block: 7px; }
+}

@@ -260,7 +260,11 @@ fn taskbar_geometry(
             let available = width.saturating_sub(reserved_start.saturating_add(12));
             let w = preferred_width.min(available);
             let py = if edge == TaskbarEdge::Bottom {
-                y + height.saturating_sub(lyric_height) as i32
+                // Keep the lyric window's bottom edge aligned with the taskbar.
+                // Use signed arithmetic so a 44px lyric window on a 40px taskbar
+                // is positioned four pixels above the taskbar instead of being
+                // clamped to its bottom edge and clipped.
+                y + height as i32 - lyric_height as i32
             } else {
                 y
             };
@@ -319,10 +323,10 @@ fn taskbar_placement() -> Option<TaskbarGeometry> {
         taskbar_width,
         taskbar_height,
         edge,
-        220,
-        460,
-        260,
-        30,
+        180,
+        520,
+        160,
+        44,
         state & ABS_AUTOHIDE != 0,
     )
 }
@@ -349,13 +353,14 @@ pub fn setup_taskbar_window(app: &AppHandle, service_url: &tauri::Url) -> Result
     let window =
         WebviewWindowBuilder::new(app, "taskbar-lyrics", WebviewUrl::External(taskbar_url))
             .title("RhineMusic Lyrics")
-            .inner_size(460.0, 30.0)
+            .inner_size(520.0, 44.0)
             .decorations(false)
             .transparent(true)
             .always_on_top(true)
             .skip_taskbar(true)
             .resizable(false)
             .focused(false)
+            .focusable(false)
             .visible(false)
             .build()
             .map_err(|e| e.to_string())?;
@@ -399,25 +404,25 @@ mod tests {
             1920,
             40,
             TaskbarEdge::Bottom,
-            220,
-            460,
-            260,
-            30,
+            180,
+            520,
+            160,
+            44,
             false,
         )
         .unwrap();
         assert_eq!(
             (bottom.x, bottom.y, bottom.width, bottom.hidden),
-            (220, 1050, 460, false)
+            (180, 1036, 520, false)
         );
         let top =
-            taskbar_geometry(0, 0, 1920, 40, TaskbarEdge::Top, 220, 460, 260, 30, false).unwrap();
-        assert_eq!((top.x, top.y), (220, 0));
+            taskbar_geometry(0, 0, 1920, 40, TaskbarEdge::Top, 180, 520, 160, 44, false).unwrap();
+        assert_eq!((top.x, top.y), (180, 0));
         let left =
-            taskbar_geometry(0, 0, 48, 1080, TaskbarEdge::Left, 220, 460, 260, 30, false).unwrap();
+            taskbar_geometry(0, 0, 48, 1080, TaskbarEdge::Left, 180, 520, 160, 44, false).unwrap();
         assert_eq!(
             (left.x, left.y, left.width, left.hidden),
-            (50, 220, 460, false)
+            (50, 180, 520, false)
         );
         let right = taskbar_geometry(
             1872,
@@ -425,14 +430,14 @@ mod tests {
             48,
             1080,
             TaskbarEdge::Right,
-            220,
-            460,
-            260,
-            30,
+            180,
+            520,
+            160,
+            44,
             false,
         )
         .unwrap();
-        assert_eq!((right.x, right.y), (1410, 220));
+        assert_eq!((right.x, right.y), (1350, 180));
     }
 
     #[test]
@@ -443,10 +448,10 @@ mod tests {
             320,
             40,
             TaskbarEdge::Bottom,
-            220,
-            460,
-            260,
-            30,
+            180,
+            520,
+            160,
+            44,
             false,
         )
         .unwrap();
@@ -457,15 +462,15 @@ mod tests {
             1920,
             40,
             TaskbarEdge::Bottom,
-            220,
-            460,
-            260,
-            30,
+            180,
+            520,
+            160,
+            44,
             true,
         )
         .unwrap();
         assert!(auto.hidden);
-        assert_eq!(auto.x, -1700);
+        assert_eq!(auto.x, -1740);
         assert!(taskbar_geometry(0, 0, 0, 40, TaskbarEdge::Top, 0, 460, 260, 30, false).is_none());
     }
 }

@@ -219,26 +219,6 @@ fn desktop_open_link(url: &str) -> Result<(), String> {
     open::that_detached(url).map_err(|e| e.to_string())
 }
 
-// Feedback opens a user-reviewed draft; it never sends mail or accepts another recipient.
-#[tauri::command]
-fn desktop_open_feedback(url: &str) -> Result<(), String> {
-    if url.len() > 7500 { return Err("Feedback draft is too long".into()); }
-    let parsed: tauri::Url = url.parse().map_err(|_| "Invalid feedback link")?;
-    if parsed.scheme() != "mailto" || parsed.path() != "2228396737@qq.com"
-        || parsed.host_str().is_some() || parsed.fragment().is_some() {
-        return Err("Invalid feedback recipient".into());
-    }
-    let mut keys = std::collections::HashSet::new();
-    for (key, value) in parsed.query_pairs() {
-        if !matches!(key.as_ref(), "subject" | "body") || !keys.insert(key.to_string())
-            || (key == "subject" && value.contains(['\r', '\n'])) {
-            return Err("Invalid feedback fields".into());
-        }
-    }
-    if keys.len() != 2 { return Err("Missing feedback fields".into()); }
-    open::that_detached(url).map_err(|e| e.to_string())
-}
-
 #[tauri::command]
 async fn desktop_check_update() -> Result<serde_json::Value, String> {
     tauri::async_runtime::spawn_blocking(check_update).await.map_err(|e| e.to_string())?
@@ -347,7 +327,7 @@ fn main() {
                 | tauri_plugin_window_state::StateFlags::POSITION
                 | tauri_plugin_window_state::StateFlags::MAXIMIZED)
             .build())
-        .invoke_handler(tauri::generate_handler![desktop_window_action, desktop_request_close, desktop_window_state, desktop_close_preference, desktop_set_close_preference, desktop_close_decision, desktop_pick_folder, desktop_open_link, desktop_open_feedback, desktop_check_update, desktop_install_update, desktop_consume_first_launch, taskbar_lyric::update, taskbar_lyric::ready, taskbar_lyric::action, taskbar_lyric::tray_action])
+        .invoke_handler(tauri::generate_handler![desktop_window_action, desktop_request_close, desktop_window_state, desktop_close_preference, desktop_set_close_preference, desktop_close_decision, desktop_pick_folder, desktop_open_link, desktop_check_update, desktop_install_update, desktop_consume_first_launch, taskbar_lyric::update, taskbar_lyric::ready, taskbar_lyric::action, taskbar_lyric::tray_action])
         .setup(|app| {
             let (service, url) = start_service(app.handle())?;
             app.manage(service);

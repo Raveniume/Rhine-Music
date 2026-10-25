@@ -18,8 +18,7 @@ import './online-debug.css';
 import { fetchOnline, mountOnlineDebug, onlineErrorReport } from './online-debug';
 import { settingsCategories, settingsNavigation, groupSettingsContent, selectSettingsCategory, type SettingsCategory } from './music-settings';
 import { aboutMarkup, checkForUpdates } from './music-about';
-import { buildMusicFeedback } from './music-feedback';
-import { consumeFirstLaunch, getCloseBehavior, isDesktop, openFeedbackDraft, setCloseBehavior, windowDisplayMarkup, setWindowDisplayMode, normalizeWindowDisplayMode, type CloseBehavior, type WindowDisplayMode } from './desktop';
+import { consumeFirstLaunch, getCloseBehavior, isDesktop, setCloseBehavior, windowDisplayMarkup, setWindowDisplayMode, normalizeWindowDisplayMode, type CloseBehavior, type WindowDisplayMode } from './desktop';
 import { version as appVersion } from "../package.json";
 import { MusicOverviewUI } from "./music-overview-ui";
 import { KeyboardPlaybackNavigation } from './music-keyboard-playback';
@@ -1916,6 +1915,15 @@ async function playPlaylistAt(row: number, song: number) {
     await player.play(track.id, playlistQueueSource(row, queue));
   } catch (error) { if (generation === playlistPlayEpoch && accountActive) notify((error as Error).message); }
 }
+async function openPlaylistSongDetail(row: number, song: number) {
+  await navigatePlaylist(row, song);
+  if (frameDisposed || !accountActive) return;
+  playlistDetail = undefined;
+  playlistDetailEpoch++;
+  setMode('detail');
+  renderDetail();
+  await playPlaylistAt(row, song);
+}
 const onlinePlaybackHistory: { playlist: string; song: number }[] = [];
 player.setQueueNavigator(async (direction, mode) => {
   if (together.active) return together.next(direction);
@@ -2323,7 +2331,6 @@ function closePanel(after?: () => void) {
   });
 }
 let settingsCategory: SettingsCategory = "local";
-let feedbackDescription = "";
 function openPanel(next: Panel) {
   disposeKeybindingEditor?.(); disposeKeybindingEditor = undefined;
   disposeVisualizerColor?.(); disposeVisualizerColor = undefined;
@@ -2447,37 +2454,6 @@ function renderSearchResults() {
   $("#album-results").innerHTML = results.length
     ? results.join("")
     : '<div class="no-results">没有找到专辑或歌曲。</div>';
-}
-function refreshFeedbackReport() {
-  const field = document.querySelector<HTMLTextAreaElement>('#feedback-report');
-  if (!field) return undefined;
-  const feedback = buildMusicFeedback(onlineErrorReport(runtimeVersion),
-    document.querySelector<HTMLTextAreaElement>('#feedback-description')?.value ?? feedbackDescription,
-    { version: runtimeVersion, quality: preferences.quality, width: innerWidth, height: innerHeight });
-  field.value = feedback.report;
-  return feedback;
-}
-async function copyFeedback() {
-  const feedback = refreshFeedbackReport();
-  if (!feedback) return;
-  const status = document.querySelector<HTMLElement>('#feedback-status');
-  try { await navigator.clipboard.writeText(feedback.report); if (status?.isConnected) status.textContent = '完整诊断已复制'; }
-  catch {
-    const field = document.querySelector<HTMLTextAreaElement>('#feedback-report');
-    if (field) { field.closest('details')!.open = true; field.focus(); field.select(); }
-    if (status?.isConnected) status.textContent = '请按 Ctrl+C 复制';
-  }
-}
-async function composeFeedback() {
-  const feedback = refreshFeedbackReport();
-  if (!feedback) return;
-  const status = document.querySelector<HTMLElement>('#feedback-status');
-  try {
-    await openFeedbackDraft(feedback.url);
-    if (status?.isConnected) status.textContent = '已请求打开邮件草稿，请在邮件客户端确认发送。若未打开，可复制诊断并发送至上方邮箱。';
-  } catch {
-    if (status?.isConnected) status.textContent = '无法打开邮件客户端，可复制诊断并发送至上方邮箱。';
-  }
 }
 function renderSettingsPanel() {
   disposeKeybindingEditor?.(); disposeKeybindingEditor = undefined;
@@ -2715,7 +2691,7 @@ document.addEventListener("click", (e) => {
   );
   if (!target) return;
   if (target.dataset.playlistDetailTrack !== undefined && playlistDetail) {
-    void playPlaylistAt(playlistDetail.row, Number(target.dataset.playlistDetailTrack)); return;
+    void openPlaylistSongDetail(playlistDetail.row, Number(target.dataset.playlistDetailTrack)); return;
   }
   if (target.dataset.overviewPlaylistOpen !== undefined) {
     const row = wrap(Number(target.dataset.overviewPlaylistOpen) - 2, playlistLibrary.playlists.length);
@@ -3094,7 +3070,6 @@ document.addEventListener("input", (e) => {
     if (output) output.textContent = `${preferences.lyricAreaSize}%`;
     savePrefs();
   }
-  if (el.id === 'feedback-description') { feedbackDescription = el.value; refreshFeedbackReport(); }
   if (el.classList.contains('playback-seek')) {
     songView.previewSeek(el); return;
   }

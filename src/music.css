@@ -151,6 +151,7 @@
   align-items: center;
   gap: 25px;
   padding-top: 7px;
+  min-height: 30px;
 }
 .music-topnav > button {
   display: flex;
@@ -158,6 +159,8 @@
   align-items: center;
   white-space: nowrap;
   font-size: 12px;
+  min-height: 30px;
+  line-height: 1;
 }
 .music-topnav svg {
   width: 17px;
@@ -475,7 +478,7 @@
 }
 .music-back {
   position: absolute;
-  left: 42px;
+  left: var(--music-content-left);
   top: 112px;
   font-size: 10px;
   pointer-events: auto;
@@ -1425,7 +1428,7 @@
   }
   .music-back {
     top: 144px;
-    left: 62px;
+    left: var(--music-content-left);
     font-size: 12px;
   }
   .album-facts small {
@@ -2285,6 +2288,8 @@
   padding-left: 12px;
   margin-top: -5px;
   gap: 6px;
+  min-height: 30px;
+  align-items: center;
 }
 .music-topnav .minimal-transport button {
   width: 29px;

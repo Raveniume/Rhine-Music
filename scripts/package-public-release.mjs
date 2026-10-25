@@ -7,7 +7,7 @@ import { collectNativeLicenses } from './collect-native-licenses.mjs';
 const root = process.cwd();
 const releases = path.resolve('release');
 const input = path.resolve(process.argv[2] || 'release/Rhine-Music-Windows');
-const name = 'Rhine-Music-Windows-Perf21-Public';
+const name = 'Rhine-Music-Windows-0.4.6-Public';
 const output = path.join(releases, name);
 if (path.dirname(input) !== releases || input === output) throw new Error('Input must be a different portable directory directly under release/');
 if (await fs.stat(output).catch(() => null)) throw new Error('Public output already exists; preserve it or choose a clean checkout.');
@@ -30,7 +30,7 @@ await fs.mkdir(path.join(output, 'docs'), { recursive: true });
 for (const file of ['WINDOWS-PERF21.md', 'WINDOWS-VALIDATION.md']) await fs.copyFile(path.join(root, 'docs', file), path.join(output, 'docs', file));
 const nativeDependencies = await collectNativeLicenses(path.join(output, 'third-party/native'), root);
 const exeHash = createHash('sha256').update(await fs.readFile(path.join(output, 'Rhine Music.exe'))).digest('hex');
-await fs.writeFile(path.join(output, 'PUBLIC-PACKAGE.txt'), `Rhine Music Windows 0.1.0 Preview / 0.4.1-perf21\nMaintainer: DuoJiuBetter\nSource: https://github.com/DuoJiuBetter/Rhine-Music-Windows\nContact: 2228396737@qq.com\nThis public package omits the optional FFmpeg/ffprobe binaries supplied in previous private test packages.\nThe native host is rebuilt with private build paths remapped, development-only fallback removed from release, and the feedback draft command explicitly allowed. The Perf21 web application and runtime service scripts are reused.\nEXE SHA-256: ${exeHash}\nNative dependency license entries: ${nativeDependencies}\nValidation: static packaging, hash and build checks only; no new application/GPU/audio/account runtime verification.\n`);
+await fs.writeFile(path.join(output, 'PUBLIC-PACKAGE.txt'), `Rhine Music Windows 0.1.0 Preview / 0.4.1-perf21\nMaintainer: DuoJiuBetter\nSource: https://github.com/Raveniume/Rhine-Music\nThis public package omits the optional FFmpeg/ffprobe binaries supplied in previous private test packages.\nThe native host is rebuilt with private build paths remapped and development-only fallback removed from release. The Perf21 web application and runtime service scripts are reused.\nEXE SHA-256: ${exeHash}\nNative dependency license entries: ${nativeDependencies}\nValidation: static packaging, hash and build checks only; no new application/GPU/audio/account runtime verification.\n`);
 const manifest = [];
 async function walk(directory) {
   for (const entry of (await fs.readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name, 'en'))) {

@@ -77,7 +77,7 @@ export class MusicSongView {
   markup(album: MusicAlbum) {
     const track = album.tracks[0];
     if (!track) return '';
-    const togetherEnabled = track.onlineSource?.provider === 'netease' && import.meta.env.VITE_PUBLIC_RELEASE !== '1';
+    const togetherEnabled = track.onlineSource?.provider === 'netease';
     return `<section id="song-view" data-song="${esc(track.id)}" data-song-tab="lyrics" data-lyrics-active="true">
       <div class="song-view-heading"><div class="song-primary-actions"><button type="button" data-action="song-toggle-stop" id="song-toggle-stop">${play}<span data-song-reveal>开始播放</span></button>${track.onlineSource ? '<button type="button" class="song-add-playlist" data-action="song-add-playlist" aria-label="添加到歌单"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16M4 12h16"/></svg><span>加入歌单</span></button>' : ''}</div><div class="song-step-buttons"><button type="button" data-action="playing-prev" aria-label="上一首">${previousArrow}<span data-song-reveal>上一首</span></button><button type="button" data-action="playing-next" aria-label="下一首"><span data-song-reveal>下一首</span>${nextArrow}</button></div></div>
       ${songViewTabsMarkup(togetherEnabled)}

@@ -4,7 +4,7 @@
 
 开始前清洁提交 8c1d46f；分支 feat/windows-perf21-settings-ipv4-feedback。回退标签 checkpoint/windows-perf20a-before-settings-ipv4-2026-10-10，完整历史备份 artifacts/rollback/windows-perf20a-8c1d46f.bundle。旧 Perf20a Debug 便携包保留。
 
-网易云 API 采用 Undici 7.28.0 独立 IPv4 连接池；设置全窗口分类；深层错误浮层增加持久开关；反馈自动采集已有安全诊断并生成固定收件人的邮件草稿。范围、验证与交付见 WINDOWS-PERF21.md。未推送、未发布。
+网易云 API 采用 Undici 7.28.0 独立 IPv4 连接池；设置全窗口分类；深层错误浮层增加持久开关；诊断信息只在本机生成并支持复制 / 保存。范围、验证与交付见 WINDOWS-PERF21.md。未推送、未发布。
 
 实现 1e05a17，标签 preview/windows-perf21-2026-10-10；生产 / 原生构建和源码 / 图标 / PE / 全包哈希静态检查通过。便携目录已复制至用户桌面 artifacts/Rhine-Music-Windows-Perf21，4879 文件 / 690895525 字节；EXE SHA-256 5d67afd330be3a731f82f23280fe655e753413d6797b9a7215627c4710ea9a51。完整交付证据见 WINDOWS-VALIDATION.md，runtimeChecked=false。
 
