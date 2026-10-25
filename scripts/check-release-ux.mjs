@@ -126,10 +126,15 @@ try {
   report.manualFullOpening=true;
   assert.deepEqual(errors,[]);
   if(desktop) {
-    await page.evaluate(()=>window.__TAURI__.core.invoke('desktop_close_decision',{behavior:'tray',remember:false}));
-    assert.equal(await page.evaluate(()=>window.__TAURI__.window.getCurrentWindow().isVisible()),false);
-    await page.evaluate(()=>window.__TAURI__.core.invoke('desktop_tray_action',{action:'show'}));
-    assert.equal(await page.evaluate(()=>window.__TAURI__.window.getCurrentWindow().isVisible()),true);
+    const closePreference=await page.evaluate(()=>window.__TAURI__.core.invoke('desktop_close_preference'));
+    try {
+      await page.evaluate(()=>window.__TAURI__.core.invoke('desktop_close_decision',{behavior:'tray',remember:false}));
+      assert.equal(await page.evaluate(()=>window.__TAURI__.window.getCurrentWindow().isVisible()),false);
+      await page.evaluate(()=>window.__TAURI__.core.invoke('desktop_tray_action',{action:'show'}));
+      assert.equal(await page.evaluate(()=>window.__TAURI__.window.getCurrentWindow().isVisible()),true);
+    } finally {
+      await page.evaluate(behavior=>window.__TAURI__.core.invoke('desktop_set_close_preference',{behavior:behavior||'ask'}),closePreference);
+    }
     report.trayHideRestore=true;
   }
   report.runtimeChecked=true;report.playlistEntrances=true;report.errors=errors;

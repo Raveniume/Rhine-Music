@@ -12,7 +12,26 @@ env:
   VITE_PUBLIC_RELEASE: "1"
 
 jobs:
+  release-gate:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.gate.outputs.build }}
+    steps:
+      - id: gate
+        name: Do not rebuild a release already promoted from verified artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [ "$EVENT" = "push" ] && gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'build=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'build=true' >> "$GITHUB_OUTPUT"
+          fi
   build:
+    needs: release-gate
+    if: needs.release-gate.outputs.build == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -102,7 +121,10 @@ jobs:
         with:
           path: release-assets
           merge-multiple: true
-      - uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          files: release-assets/**/*
+      - name: Create release without overwriting an existing version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --title "RhineMusic $TAG"
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" release-assets/*
