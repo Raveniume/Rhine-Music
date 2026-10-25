@@ -1,6 +1,6 @@
 @import './music-song-actions.css';
 .music-view-toggle, .overview-return {
-  position: absolute; z-index: 7; left: 40px;
+  position: absolute; z-index: 7; left: var(--music-content-left);
   display: flex; align-items: center; gap: 11px; padding: 9px 0;
   border: 0; border-bottom: 1px solid var(--line); background: none;
   font-size: 12px !important; cursor: pointer; letter-spacing: .06em;
@@ -118,7 +118,7 @@
 }
 @media (max-width: 600px) {
   .music-view-toggle { left: var(--music-content-left); top: calc(var(--music-content-top) + 28px); }
-  .overview-return { left: 22px; bottom: 50px; }
+  .overview-return { left: var(--music-content-left); bottom: 50px; }
   .overview-heading { left: var(--music-content-left); top: var(--music-content-top); }
   .overview-heading h2 { font-size: 17px; }
   .overview-anchor { --overview-label-width: 116px; }

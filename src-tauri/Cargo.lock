@@ -3124,7 +3124,7 @@ dependencies = [
 
 [[package]]
 name = "rhine-music-windows"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "open",
  "reqwest 0.12.28",

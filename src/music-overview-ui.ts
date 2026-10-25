@@ -263,6 +263,8 @@ export class MusicOverviewUI {
       item.anchor.dataset.playlist = String(item.playlist);
       if (item.playlist) delete item.label.dataset.overviewLane;
       else item.label.dataset.overviewLane = String(column.lane);
+      if (item.playlist) item.label.dataset.overviewPlaylistOpen = String(column.lane);
+      else delete item.label.dataset.overviewPlaylistOpen;
       item.label.setAttribute('aria-controls', item.playlist ? item.details.id : item.enter.id);
       item.label.title = column.name;
       item.label.setAttribute("aria-label", item.playlist ? `歌单：${column.name}` : `展开${columnName}入口：${column.name}`);

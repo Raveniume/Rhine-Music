@@ -240,7 +240,10 @@ fn desktop_open_feedback(url: &str) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn desktop_check_update() -> Result<serde_json::Value, String> {
+async fn desktop_check_update() -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(check_update).await.map_err(|e| e.to_string())?
+}
+fn check_update() -> Result<serde_json::Value, String> {
     let client = reqwest::blocking::Client::builder().user_agent("RhineMusic-Updater/1").timeout(Duration::from_secs(10)).build().map_err(|e| e.to_string())?;
     let response = client.get("https://api.github.com/repos/Raveniume/Rhine-Music/releases/latest").send().map_err(|e| e.to_string())?;
     if !response.status().is_success() { return Err(format!("GitHub 更新接口返回 {}", response.status())); }
@@ -252,14 +255,17 @@ fn desktop_consume_first_launch() -> Result<bool, String> {
     let executable = std::env::current_exe().map_err(|e| e.to_string())?;
     let marker = executable.parent().ok_or("安装目录不可用")?.join(".rhine-first-launch");
     match std::fs::remove_file(marker) {
-        Ok(()) => Ok(true),
+        Ok(()) => Ok(std::env::args().any(|arg| arg == "--installed-first-launch")),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
         Err(error) => Err(error.to_string()),
     }
 }
 
 #[tauri::command]
-fn desktop_install_update(app: tauri::AppHandle, url: String, sha256: String) -> Result<(), String> {
+async fn desktop_install_update(app: tauri::AppHandle, url: String, sha256: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || install_update(app, url, sha256)).await.map_err(|e| e.to_string())?
+}
+fn install_update(app: tauri::AppHandle, url: String, sha256: String) -> Result<(), String> {
     let parsed: tauri::Url = url.parse().map_err(|_| "更新地址无效".to_owned())?;
     if parsed.scheme() != "https" || parsed.host_str() != Some("github.com") || parsed.port_or_known_default() != Some(443) || !parsed.path().starts_with("/Raveniume/Rhine-Music/releases/download/") { return Err("更新地址不是 RhineMusic GitHub Release 资产".into()); }
     if sha256.len() != 64 || !sha256.bytes().all(|b| b.is_ascii_hexdigit()) { return Err("更新校验值无效".into()); }
@@ -270,7 +276,7 @@ fn desktop_install_update(app: tauri::AppHandle, url: String, sha256: String) ->
     let client = reqwest::blocking::Client::builder().user_agent("RhineMusic-Updater/1").timeout(Duration::from_secs(300)).build().map_err(|e| e.to_string())?;
     let mut response = client.get(url).send().map_err(|e| e.to_string())?;
     if !response.status().is_success() { return Err(format!("更新下载返回 {}", response.status())); }
-    let mut file = std::fs::File::create(&target).map_err(|e| e.to_string())?;
+    let mut file = std::fs::OpenOptions::new().create(true).truncate(true).read(true).write(true).open(&target).map_err(|e| e.to_string())?;
     std::io::copy(&mut response, &mut file).map_err(|e| e.to_string())?;
     use std::io::{Read, Seek};
     file.rewind().map_err(|e| e.to_string())?;
@@ -279,15 +285,16 @@ fn desktop_install_update(app: tauri::AppHandle, url: String, sha256: String) ->
     loop { let count = file.read(&mut buffer).map_err(|e| e.to_string())?; if count == 0 { break; } hasher.update(&buffer[..count]); }
     let digest = format!("{:x}", hasher.finalize());
     if !digest.eq_ignore_ascii_case(&sha256) { let _ = std::fs::remove_file(&target); return Err("更新文件校验失败".into()); }
-    EXITING.store(true, Ordering::Release);
+    drop(file);
     #[cfg(windows)] {
         use std::os::windows::process::CommandExt;
         let app_pid = std::process::id();
         let target_ps = target.to_string_lossy().replace('\'', "''");
-        let script = format!("Wait-Process -Id {app_pid}; $installer = Start-Process -FilePath '{target_ps}' -Wait -PassThru; if ($installer.ExitCode -eq 0) {{ $entry = Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\RhineMusicWindowsPreview' -ErrorAction SilentlyContinue; if ($entry.InstallLocation) {{ Start-Process (Join-Path $entry.InstallLocation 'Rhine Music.exe') }} }}");
+        let script = format!("Wait-Process -Id {app_pid} -ErrorAction SilentlyContinue; $installer = Start-Process -FilePath '{target_ps}' -ArgumentList '/S' -WindowStyle Hidden -Wait -PassThru; if ($installer.ExitCode -eq 0) {{ $entry = Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\RhineMusicWindowsPreview' -ErrorAction SilentlyContinue; if ($entry.InstallLocation) {{ Start-Process (Join-Path $entry.InstallLocation 'Rhine Music.exe') -ArgumentList '--installed-first-launch' -WindowStyle Hidden }} }}");
         Command::new("powershell.exe").args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", &script]).creation_flags(0x08000000).spawn().map_err(|e| e.to_string())?;
     }
     #[cfg(not(windows))] { return Err("Windows 安装包只能由 Windows 桌面版更新".into()); }
+    EXITING.store(true, Ordering::Release);
     app.exit(0);
     Ok(())
 }

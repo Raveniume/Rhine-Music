@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
 export const RHINE_REPOSITORY = 'https://github.com/Raveniume/Rhine-Music';
-type ReleaseAsset = { name?: string; browser_download_url?: string };
+type ReleaseAsset = { name?: string; browser_download_url?: string; digest?: string };
 type Release = { tag_name?: string; name?: string; html_url?: string; body?: string; assets?: ReleaseAsset[] };
 
 export function aboutMarkup(version: string) {
@@ -24,15 +24,18 @@ export async function checkForUpdates(current: string, interactive = true) {
     if (!remote || !newer(remote, current)) { if (status) status.textContent = `已是最新版本 V${current}`; return false; }
     const assets = Array.isArray(release.assets) ? release.assets : [];
     const installer = assets.find(asset => /windows.*setup.*\.exe$/i.test(asset.name || '') || /setup.*\.exe$/i.test(asset.name || ''));
-    const checksum = assets.find(asset => /sha256$/i.test(asset.name || '') || /checksums/i.test(asset.name || ''));
+    const checksum = assets.find(asset => asset.name === `${installer?.name}.sha256`);
     if (!installer?.browser_download_url) { if (status) status.textContent = `发现 V${remote}，但仓库还没有可用 Windows 安装包。`; return false; }
     if (status) status.textContent = `发现新版本 V${remote}`;
     if (!interactive || !window.confirm(`RhineMusic 有新版本 V${remote}，是否下载并安装？`)) return true;
     if (!window.__TAURI_INTERNALS__) { window.open(installer.browser_download_url, '_blank', 'noopener'); return true; }
-    if (!checksum?.browser_download_url) { if (status) status.textContent = '更新缺少 SHA-256 校验文件，已取消安装。'; return false; }
-    const sums = await fetch(checksum.browser_download_url).then(response => response.text());
-    const checksumLine = sums.split(/\r?\n/).find(line => line.endsWith(installer.name!));
-    const expectedHash = checksumLine?.match(/^([a-f0-9]{64})\s+/i)?.[1];
+    // GitHub's asset digest arrives over the native release request, avoiding
+    // a cross-origin checksum download from the local WebView origin.
+    let expectedHash = installer.digest?.match(/^sha256:([a-f0-9]{64})$/i)?.[1];
+    if (!expectedHash && checksum?.browser_download_url) {
+      const sums = await fetch(checksum.browser_download_url).then(response => { if (!response.ok) throw Error('校验文件下载失败'); return response.text(); });
+      expectedHash = sums.split(/\r?\n/).find(line => line.endsWith(installer.name!))?.match(/^([a-f0-9]{64})\s+/i)?.[1];
+    }
     if (!expectedHash) { if (status) status.textContent = '未找到安装包校验值，已取消安装。'; return false; }
     if (status) status.textContent = '正在下载并校验安装包…';
     await invoke('desktop_install_update', { url: installer.browser_download_url, sha256: expectedHash });

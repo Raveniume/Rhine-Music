@@ -33,7 +33,7 @@ VIAddVersionKey /LANG=2052 "LegalCopyright" "Rhine Music contributors; see bundl
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !define MUI_FINISHPAGE_RUN "$INSTDIR\Rhine Music.exe"
-!define MUI_FINISHPAGE_RUN_NOTCHECKED
+!define MUI_FINISHPAGE_RUN_PARAMETERS "--installed-first-launch"
 !define MUI_FINISHPAGE_RUN_TEXT "打开 Rhine Music"
 !define MUI_FINISHPAGE_TEXT "Rhine Music 已安装。可从开始菜单打开，或在 Windows 设置 → 应用中卸载。$\r$\n$\r$\n卸载只移除程序文件，保留音乐、账号和设置。"
 !insertmacro MUI_PAGE_FINISH
@@ -150,7 +150,7 @@ Section "播放器及运行环境（必需）" MainSection
   WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayIcon" "$INSTDIR\Rhine Music.exe,0"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
   WriteRegStr HKCU "${UNINSTALL_KEY}" "QuietUninstallString" '$\"$INSTDIR\Uninstall.exe$\" /S'
-  WriteRegStr HKCU "${UNINSTALL_KEY}" "URLInfoAbout" "https://github.com/DuoJiuBetter/Rhine-Music-Windows"
+  WriteRegStr HKCU "${UNINSTALL_KEY}" "URLInfoAbout" "https://github.com/Raveniume/Rhine-Music"
   WriteRegDWORD HKCU "${UNINSTALL_KEY}" "NoModify" 1
   WriteRegDWORD HKCU "${UNINSTALL_KEY}" "NoRepair" 1
   WriteRegDWORD HKCU "${UNINSTALL_KEY}" "EstimatedSize" ${ESTIMATED_KIB}

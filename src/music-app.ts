@@ -386,7 +386,7 @@ stage.innerHTML = `
   </section>
   <section id="music-browse" class="music-browse" aria-label="专辑浏览">
     <div class="music-browse-veil" aria-hidden="true"></div>
-    <div class="album-callout"><p class="music-eyebrow">MUSIC ARCHIVE <span>／</span> <span id="selection-genre"></span></p>
+    <div class="album-callout"><p class="music-eyebrow">MUSIC ARCHIVE <span>／</span> <button class="detail-breadcrumb" data-action="open-current-playlist" id="selection-genre"></button></p>
       <div class="selection-rule"><span id="selection-code">ALBUM <span id="selection-code-number">001</span></span><span id="selection-format"></span></div>
       <h1 id="selection-title"></h1><p id="selection-artist" class="selection-artist"></p>
       <div class="selection-meta" id="selection-meta"></div>
@@ -484,7 +484,7 @@ function syncSelectionMotion() {
   if (!enabled) titleMotion.finish();
   else {
     const album = currentAlbum();
-    if (album) titleMotion.update(album.title, true);
+    if (album) titleMotion.update(album.playback?.songTitle || album.title, false);
   }
 }
 
@@ -566,6 +566,37 @@ const overviewUI = new MusicOverviewUI($("#music-overview"), $("#overview-column
   (lane, first) => void loadOverviewPlaylist(lane, first));
 let detailIdentity = "",
   pendingDetailFocus = false;
+let playlistDetail: { row: number; offset: number; loading: boolean; error: string } | undefined;
+let playlistDetailEpoch = 0;
+async function openPlaylistDetail(row: number, offset = 0) {
+  const playlist = playlistLibrary.playlists[row];
+  if (!playlist || !accountActive) return;
+  const epoch = ++playlistDetailEpoch, key = accountKey;
+  if (overview) setOverview(false);
+  await navigatePlaylist(row, offset);
+  if (epoch !== playlistDetailEpoch || key !== accountKey) return;
+  playlistDetail = { row, offset, loading: true, error: '' };
+  renderDetail();
+  if (!presentation.openingOrDetail) presentation.open();
+  try { await playlistLibrary.ensure(row, offset, true); }
+  catch (error) { if (epoch === playlistDetailEpoch && playlistDetail) playlistDetail.error = (error as Error).message; }
+  if (epoch !== playlistDetailEpoch || key !== accountKey || !playlistDetail) return;
+  playlistDetail.loading = false;
+  renderDetail();
+}
+function renderPlaylistDetail() {
+  const detail = playlistDetail!;
+  const playlist = playlistLibrary.playlists[detail.row];
+  if (!playlist) return;
+  songView.setVisible(false);
+  detailIdentity = `playlist:${playlist.id}`;
+  const tracks = Array.from({ length: Math.min(50, Math.max(0, playlist.trackCount - detail.offset)) }, (_, index) => {
+    const position = detail.offset + index, track = playlistLibrary.track(detail.row, position);
+    return `<button class="track-row" data-playlist-detail-track="${position}" ${!track ? 'disabled' : ''}><span class="track-number">${String(position + 1).padStart(2, '0')}</span><span class="track-name"><strong>${esc(track?.title || (detail.loading ? '正在读取…' : '歌曲不可用'))}</strong><small>${esc(track?.artist || '')}</small></span><span class="track-duration">${track ? time(track.duration) : ''}</span></button>`;
+  }).join('');
+  $('#album-detail-content').innerHTML = `<div class="detail-overline"><span>PLAYLIST ${String(detail.row + 1).padStart(3, '0')}</span><span>${esc(musicPlatforms[activeProvider])}</span></div><h1>${esc(playlist.name)}</h1><p class="detail-artist">${playlist.trackCount} 首歌曲 · ${playlist.owned ? '创建的歌单' : '收藏的歌单'}</p><div class="playlist-detail-tools"><strong>歌单曲目</strong><button class="text-button" data-action="playlist-detail-prev" ${detail.offset === 0 ? 'disabled' : ''}>上一页</button><span>${Math.floor(detail.offset / 50) + 1} / ${Math.max(1, Math.ceil(playlist.trackCount / 50))}</span><button class="text-button" data-action="playlist-detail-next" ${detail.offset + 50 >= playlist.trackCount ? 'disabled' : ''}>下一页</button></div><p role="status">${esc(detail.error)}</p><div class="track-list" aria-label="歌单歌曲列表">${tracks || '<p>这个歌单还没有歌曲。</p>'}</div>`;
+  $('#album-detail-content').scrollTop = 0;
+}
 const trackFocus = new MusicTrackFocus();
 let pendingTrackReveal: { albumId: string; trackId: string } | undefined;
 function cancelTrackReveal() {
@@ -596,6 +627,7 @@ const presentation = new MusicPresentation({
     effects.play("open");
   },
   returnCamera: () => {
+    playlistDetail = undefined; playlistDetailEpoch++;
     scene?.setMode("archive");
     effects.setScene("archive");
     effects.play("back");
@@ -1079,6 +1111,8 @@ function updateSelection(navigation?: ArchiveNavigation) {
     files = a.playback && !a.playback.queueShelf ? records.flatMap((record, index) => record.album?.playback?.queueShelf ? [] : [index]) : columnFiles(location.lane),
     idx = files.indexOf(selected);
   const rapid=Boolean(scene?.rapidSelectionActive);
+  const selectedTitle = a.playback?.songTitle || a.title;
+  titleMotion.update(selectedTitle, false);
   titleMotion.setRapid(rapid);
   const animated = selectionInitialized && selectionMotionEnabled() && !rapid;
   selectionInitialized = true;
@@ -1103,11 +1137,9 @@ function updateSelection(navigation?: ArchiveNavigation) {
         .filter(Boolean)
         .join("  /  "),
     },
-    animated,
+    selectionInitialized && selectionMotionEnabled(),
     navigation,
   );
-  const selectedTitle = a.playback?.songTitle || a.title;
-  titleMotion.update(selectedTitle, animated);
   $("#selection-title").title = selectedTitle;
   const positionPrefix = $('#genre-position').firstChild;
   if (positionPrefix?.nodeType === Node.TEXT_NODE) positionPrefix.textContent = a.playlistCell ? 'PLAYLIST ' : `${sortLabel.code} `;
@@ -1380,6 +1412,7 @@ function setTab(tab: "tracks" | "about") {
   effects.play("ui-tick");
 }
 function renderDetail() {
+  if (playlistDetail) { renderPlaylistDetail(); return; }
   const a = currentAlbum();
   if (!a) return;
   const songDetail = Boolean(a.playback || a.playlistCell || a.tracks.length === 1 && a.tracks[0].onlineSource);
@@ -1947,6 +1980,7 @@ function onlineAccountChanged(provider: MusicProvider, account: NeteaseAccount) 
   $('#my-playlists-button').hidden = !account.loggedIn;
   const nextKey = account.loggedIn ? `${provider}:${account.profile?.userId || account.profile?.nickname || provider}` : '';
   if (nextKey === accountKey) return;
+  playlistDetail = undefined; playlistDetailEpoch++;
   playlistManager.dispose();
   together.invalidate();
   accountKey = nextKey; accountActive = account.loggedIn; playlistSelectionEpoch++; playlistPlayEpoch++; playlistNavigationTarget = undefined;
@@ -2451,7 +2485,7 @@ function renderSettingsPanel() {
   lyricSettingsPreview.stop();
   $("#panel-body").innerHTML =
     `<section class="panel-section" data-settings-group="appearance"><h3>外观主题</h3><div class="theme-cards">${(["day", "night"] as Theme[]).map((t) => `<button data-theme="${t}" aria-pressed="${preferences.theme === t}" class="${t}"><i></i><strong>${themeNames[t]}</strong><span>${t === "day" ? "暖白玻璃与日光" : "极简星空与透光白卡"}</span></button>`).join("")}</div></section>
-    <section class="panel-section" data-settings-group="appearance"><h3>启动体验</h3><label class="settings-row"><span>启动时展示开场动画</span><input type="checkbox" id="startup-opening" aria-label="启动时展示开场动画" ${preferences.startupOpening ? "checked" : ""}></label><p class="quality-note">播放开场时后台加载模型；关闭后直接显示加载界面。下次启动生效，减少动态效果开启时跳过。</p></section>
+    <section class="panel-section" data-settings-group="appearance"><h3>启动体验</h3><label class="settings-row"><span>启动时展示元素滚动</span><input type="checkbox" id="startup-opening" aria-label="启动时展示元素滚动" ${preferences.startupOpening ? "checked" : ""}></label><p class="quality-note">日常启动只显示三维元素滚动；关闭后直接进入档案架。安装包首次启动会播放完整开场，在此处选择“观看完整启动动画”可随时重播。</p></section>
     <section class="panel-section" data-settings-group="appearance"><h3>关闭行为</h3><label class="settings-row"><span>点击关闭按钮时</span><select id="close-behavior" aria-label="点击关闭按钮时"><option value="ask" ${preferences.closeBehavior === 'ask' ? 'selected' : ''}>每次询问</option><option value="tray" ${preferences.closeBehavior === 'tray' ? 'selected' : ''}>最小化到托盘</option><option value="exit" ${preferences.closeBehavior === 'exit' ? 'selected' : ''}>彻底退出</option></select></label><p class="quality-note">托盘模式会继续播放音乐，并保留任务栏歌词与播放控制。</p></section>
     ${visualizerMarkup(preferences.visualizer!)}
     <section class="panel-section" data-settings-group="appearance"><h3>歌词显示</h3><label class="settings-row"><span>歌词区域高度 <output id="lyric-area-size-value">${preferences.lyricAreaSize}%</output></span><input type="range" id="lyric-area-size" aria-label="歌词区域高度" min="40" max="100" step="5" value="${preferences.lyricAreaSize}"></label><p class="quality-note">窗口较小时会保留最低阅读高度，保证歌词和进度条可见。</p></section>
@@ -2468,7 +2502,7 @@ function renderSettingsPanel() {
     <section class="panel-section" data-settings-group="display"><h3>帧率</h3><label class="settings-row"><span>帧率上限</span><select id="frame-limit" aria-label="帧率上限">${FRAME_LIMITS.map(value => `<option value="${value}" ${preferences.frameLimit === value ? 'selected' : ''}>${value ? `${value} FPS` : '不限制'}</option>`).join('')}</select></label><p class="quality-note">实际帧率取决于显卡性能及屏幕刷新率。不限制时跟随屏幕刷新；后台窗口仍会暂停三维绘制。</p></section>
     <section class="panel-section" data-settings-group="display"><h3>玻璃遮挡优化</h3><label class="settings-row"><span>可见区域绘制</span><select id="glass-occlusion" aria-label="玻璃遮挡优化"><option value="on" ${glassOcclusionMode === "on" ? "selected" : ""}>开启遮挡优化</option><option value="off" ${glassOcclusionMode === "off" ? "selected" : ""}>关闭 · Perf6 对照</option><option value="debug" ${glassOcclusionMode === "debug" ? "selected" : ""}>三类区域调试</option></select></label><button class="text-button" data-action="copy-performance">复制性能诊断 ↗</button></section>
     <section class="panel-section" data-settings-group="developer"><h3>在线错误调试</h3><label class="settings-row"><span>显示详细报错</span><input type="checkbox" id="online-error-display" ${preferences.onlineErrorDisplay ? "checked" : ""}></label><button class="text-button" data-action="show-online-errors" ${preferences.onlineErrorDisplay ? "" : "disabled"}>查看 / 复制报错</button><button class="text-button" data-action="copy-performance">复制性能诊断 ↗</button></section>
-    <section class="panel-section" data-settings-group="appearance"><h3>动效与显示</h3><label class="settings-row"><span>减少动态效果</span><input type="checkbox" id="reduced-motion" ${preferences.reduced ? "checked" : ""}></label></section><section class="panel-section" data-settings-group="display"><h3>窗口与全屏</h3>${windowDisplayMarkup()}</section><section class="panel-section" data-settings-group="developer"><h3>界面维护</h3><button class="text-button" data-action="replay-boot">重播开场 ↗</button><button class="text-button" data-action="reload-interface">重新载入界面 ↻</button></section>
+    <section class="panel-section" data-settings-group="appearance"><h3>动效与显示</h3><label class="settings-row"><span>减少动态效果</span><input type="checkbox" id="reduced-motion" ${preferences.reduced ? "checked" : ""}></label></section><section class="panel-section" data-settings-group="display"><h3>窗口与全屏</h3>${windowDisplayMarkup()}</section><section class="panel-section" data-settings-group="developer"><h3>界面维护</h3><button class="text-button" data-action="replay-boot">观看完整启动动画 ↗</button><button class="text-button" data-action="reload-interface">重新载入界面 ↻</button></section>
     <section class="panel-section" data-settings-group="appearance"><h3>声音</h3><label class="settings-row"><span>歌曲音量</span><input type="range" id="volume" aria-label="歌曲音量" min="0" max="100" value="${Math.round(preferences.volume * 100)}"></label><label class="settings-row"><span>歌曲衔接</span><select id="song-fade-setting" aria-label="歌曲衔接方式"><option value="fade-out" ${preferences.songTransition === "fade-out" ? "selected" : ""}>淡出但不淡入</option><option value="fade-in-out" ${preferences.songTransition === "fade-in-out" ? "selected" : ""}>淡出淡入</option><option value="gapless" ${preferences.songTransition === "gapless" ? "selected" : ""}>无缝播放</option></select></label><label class="settings-row"><span>界面音效</span><input type="checkbox" id="sound-setting" ${preferences.sound ? "checked" : ""}></label><label class="settings-row"><span>音效音量</span><input type="range" id="sound-volume" aria-label="音效音量" min="0" max="100" value="${Math.round(preferences.soundVolume * 100)}"></label><label class="settings-row"><span>氛围 BGM</span><input type="checkbox" id="bgm-setting" ${preferences.bgm ? "checked" : ""}></label><label class="settings-row"><span>BGM 音量</span><input type="range" id="bgm-volume" aria-label="BGM 音量" min="0" max="100" value="${Math.round(preferences.bgmVolume * 100)}"></label><button class="text-button" data-action="sound-preview">试听界面音效 ↗</button></section>
     <details class="panel-section" id="musicbrainz-settings" data-settings-group="local"><summary>高级设置 · MusicBrainz</summary><button data-action="enrich-library" class="text-button">补充缺失的在线资料 ↗</button><div id="online-config"></div></details>
     ${aboutMarkup(displayVersion)}`;
@@ -2680,9 +2714,16 @@ document.addEventListener("click", (e) => {
     "button, [data-action]",
   );
   if (!target) return;
+  if (target.dataset.playlistDetailTrack !== undefined && playlistDetail) {
+    void playPlaylistAt(playlistDetail.row, Number(target.dataset.playlistDetailTrack)); return;
+  }
+  if (target.dataset.overviewPlaylistOpen !== undefined) {
+    const row = wrap(Number(target.dataset.overviewPlaylistOpen) - 2, playlistLibrary.playlists.length);
+    void openPlaylistDetail(row); return;
+  }
   if (target.dataset.playlistOpen !== undefined) {
     const row = Number(target.dataset.playlistOpen);
-    if (Number.isInteger(row) && row >= 0) closePanel(() => void navigatePlaylist(row, 0));
+    if (Number.isInteger(row) && row >= 0) closePanel(() => void openPlaylistDetail(row));
     return;
   }
   if (target.dataset.playlistRow !== undefined) {
@@ -2801,6 +2842,16 @@ document.addEventListener("click", (e) => {
     return;
   }
   switch (action) {
+    case 'open-current-playlist': {
+      const cell = currentAlbum()?.playlistCell;
+      if (cell) void openPlaylistDetail(cell.playlistIndex);
+      else if (currentAlbum()) presentation.open();
+      break;
+    }
+    case 'playlist-detail-prev':
+    case 'playlist-detail-next':
+      if (playlistDetail) void openPlaylistDetail(playlistDetail.row, Math.max(0, playlistDetail.offset + (action.endsWith('prev') ? -50 : 50)));
+      break;
     case 'play-queue':
       closePanel(() => void showQueueShelf());
       break;
@@ -3507,7 +3558,7 @@ async function start() {
   let openingAccountPrepared = false;
   void prepareStartupExtras();
   try {
-    if (startupSceneEnabled) {
+    if (startupSceneEnabled && firstInstalledLaunch) {
       loadingOpening = new LoadingOpening(stage);
       loadingOpening.setHidden(document.hidden || nativeHidden);
       $("#music-loading").hidden = true;

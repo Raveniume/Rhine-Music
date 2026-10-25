@@ -13,7 +13,7 @@ const sceneStub = `import {records,playlistRows} from '/src/data.ts'; export cla
   async prepareMusicRenderer(){window.fixture.warmWaiting=true;await new Promise(r=>window.fixture.releaseWarm=r);}
   update(time,cinema){window.fixture.draws++;if(cinema){window.fixture.firstCinema??=cinema;window.fixture.lastCinema=cinema;}}
   getStats(){return{drawCalls:0,triangles:0};} getOverviewColumns(){return[];}
-  showMusicArchiveImmediately(){if(window.fixture.handoffError)throw Error('Synthetic handoff error');}
+  showMusicArchiveImmediately(){window.fixture.introCompleted=true;if(window.fixture.handoffError)throw Error('Synthetic handoff error');}
   setMode(){} setMusicOverview(){} finishMusicIntro(){window.fixture.introCompleted=true;}
   setQuality(){} setMusicArrayMode(){} enableSelectionLighting(){} setTheme(){} setReduced(){} setLightingExperiment(){}
   preloadCovers(){} resize(){} noteUserInteraction(){} noteWheelInteraction(){} setGlassOcclusion(){}
@@ -42,6 +42,7 @@ async function fixture(options={}) {
       let callbackId=0;
       window.__TAURI_INTERNALS__={transformCallback:callback=>{window.fixture.callbacks??={};const id=++callbackId;window.fixture.callbacks[id]=callback;return id;},invoke:async(command,args={})=>{
         if(command==='plugin:event|listen')return callbackId;
+        if(command==='desktop_consume_first_launch')return options.firstInstalled===true;
         if(command==='desktop_close_preference')return null;
         if(command==='desktop_set_close_preference')return null;
         if(command==='desktop_close_decision')return null;
@@ -98,11 +99,10 @@ try {
   await restored.page.waitForFunction(()=>window.fixture.modelWaiting);
   assert.deepEqual(await restored.page.evaluate(()=>window.fixture.openingSnapshot),{songs:8,covers:8,playlists:1},
     'Saved account and opening songs/art URLs exist before model construction/prewarming');
-  assert.equal(await restored.page.locator('.rhine-loading').getAttribute('data-state'),'playing',
-    'Saved account restoration runs behind the opening film');
+  assert.equal(await restored.page.locator('.rhine-loading').count(),0,'Daily startup never creates the full prologue');
   assert.deepEqual(restored.errors,[]);await restored.context.close();
-  reports.push('saved account playlists and cover metadata restored before model preparation, behind film; synthetic HTTP only');
-  const opening=await fixture({startupOpening:true});
+  reports.push('saved account and covers restored before model preparation; daily startup creates no prologue');
+  const opening=await fixture({startupOpening:true,nativeWindow:true,firstInstalled:true});
   await opening.page.locator('.rhine-loading').waitFor({state:'visible'});
   assert.equal(await opening.page.locator('#music-loading').evaluate(n=>n.hidden),true,'the film replaces the loading spinner');
   await opening.page.waitForFunction(()=>window.fixture.modelWaiting);
@@ -115,12 +115,13 @@ try {
   await finish(opening.page);
   await opening.page.waitForFunction(()=>!!window.fixture.firstCinema);
   assert.equal(await opening.page.locator('.music-app').getAttribute('data-music-boot'),'running');
-  assert.equal(await opening.page.locator('.music-opening').evaluate(n=>n.hidden),true,'startup shows the 3D wave without the 2D prologue');
+  assert.equal(await opening.page.locator('.music-opening').evaluate(n=>n.hidden),false,'Installer launch starts the full prologue');
   assert.equal(await opening.page.locator('.music-header').evaluate(n=>n.inert),true);
   const firstCinema=await opening.page.evaluate(()=>window.fixture.firstCinema);
-  assert.equal(firstCinema.musicIntro,true);assert.ok(firstCinema.time>=21.92&&firstCinema.time<22.1);
+  assert.equal(firstCinema.musicIntro,true);
+  await opening.page.locator('.music-boot-skip').click();
   await opening.page.waitForFunction(()=>document.querySelector('.music-app').dataset.musicBoot==='done');
-  assert.equal(await opening.page.evaluate(()=>window.fixture.introCompleted),true,'natural wave completion hands back to browsing');
+  assert.equal(await opening.page.evaluate(()=>window.fixture.introCompleted),true,'skipping the installer prologue hands back to browsing');
   assert.equal(await opening.page.locator('.music-header').evaluate(n=>n.inert),false);
   await opening.page.locator('[data-action="settings"]').first().click();
   await opening.page.locator('.settings-window').waitFor({state:'visible'});
@@ -129,7 +130,7 @@ try {
   await opening.page.locator('#startup-opening').uncheck();
   assert.equal(await opening.page.evaluate(()=>JSON.parse(localStorage.getItem('rhine-music-preferences')).startupOpening),false);
   assert.deepEqual(opening.errors,[]);await opening.context.close();
-  reports.push('startup enters the original live 3D wave after renderer readiness, hides the 2D prologue, and restores settings interaction after natural completion');
+  reports.push('installer launch displays the complete prologue; skip restores interaction and the daily wave setting persists');
 
   const reducedOpening=await fixture({startupOpening:true,reduced:true});await finish(reducedOpening.page);
   assert.equal(await reducedOpening.page.locator('.rhine-loading').count(),0);

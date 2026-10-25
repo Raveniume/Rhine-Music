@@ -265,6 +265,7 @@ export function setupMusicTitleLayout(root: HTMLElement) {
       appliedViewport = "";
       appliedLayout = undefined;
       animateNext = false;
+      callout.removeAttribute("data-title-pending");
       return;
     }
     const width = title.getBoundingClientRect().width;
@@ -341,6 +342,7 @@ export function setupMusicTitleLayout(root: HTMLElement) {
     reels.render(result.glyphs, result.height, animated);
     displayed = text;
     animateNext = false;
+    callout.removeAttribute("data-title-pending");
     appliedKey = key;
     appliedLayout = result;
     appliedViewport = viewport;
@@ -366,10 +368,17 @@ export function setupMusicTitleLayout(root: HTMLElement) {
     setRapid(next: boolean) {
       if(rapid===next)return;
       rapid=next;
-      rapidTitle.hidden=!next;spacer.hidden=visual.hidden=next;
-      rapidTitle.style.display=next?'-webkit-box':'none';
-      if(next){cancelAnimationFrame(scheduled);scheduled=0;reels.finish();rapidTitle.textContent=text;}
-      else {animateNext=false;schedule();}
+      if(next){
+        cancelAnimationFrame(scheduled);scheduled=0;reels.finish();
+        rapidTitle.textContent=text;rapidTitle.hidden=false;
+        rapidTitle.style.display='-webkit-box';spacer.hidden=visual.hidden=true;
+        callout.removeAttribute('data-title-pending');
+      } else {
+        // Commit the latest measured title before revealing the old reel pool.
+        // Otherwise the end of every wheel burst paints the previous song.
+        animateNext=false;layout();
+        rapidTitle.hidden=true;rapidTitle.style.display='none';spacer.hidden=visual.hidden=false;
+      }
     },
     update(next: string, animated: boolean) {
       enabled = animated;
@@ -382,7 +391,9 @@ export function setupMusicTitleLayout(root: HTMLElement) {
       animateNext = animated && !!displayed;
       title.title = next;
       title.setAttribute("aria-label", next);
-      schedule();
+      if (displayed && displayed !== next) callout.dataset.titlePending = "true";
+      if (!animated) { cancelAnimationFrame(scheduled); scheduled = 0; layout(); }
+      else schedule();
     },
     finish() {
       enabled = false;

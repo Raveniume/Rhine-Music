@@ -218,7 +218,7 @@
 }
 .library-status {
   position: absolute;
-  left: 42px;
+  left: var(--music-content-left);
   top: 112px;
   z-index: 3;
   display: flex;
@@ -316,7 +316,7 @@
 .music-navigation {
   position: absolute;
   bottom: 60px;
-  left: 42px;
+  left: var(--music-content-left);
   right: 6.2%;
   display: grid;
   grid-template-columns: 210px 1fr 1.1fr;
@@ -1371,8 +1371,8 @@
 }
 @media (min-width: 1700px) {
   .music-header {
-    left: 60px;
-    right: 60px;
+    left: var(--music-content-left);
+    right: var(--music-content-left);
     top: 48px;
   }
   .music-brand strong {
@@ -1389,7 +1389,7 @@
   }
   .library-status {
     top: 144px;
-    left: 62px;
+    left: var(--music-content-left);
   }
   .album-callout {
     top: 35%;
@@ -1410,7 +1410,7 @@
     font-size: 15px;
   }
   .music-navigation {
-    left: 62px;
+    left: var(--music-content-left);
     bottom: 90px;
   }
   .music-keyhint {
@@ -1462,8 +1462,8 @@
 }
 @media (max-width: 1100px) {
   .music-header {
-    left: 25px;
-    right: 25px;
+    left: var(--music-content-left);
+    right: var(--music-content-left);
     top: 26px;
   }
   .music-brand strong {
@@ -1486,7 +1486,7 @@
     display: none;
   }
   .library-status {
-    left: 27px;
+    left: var(--music-content-left);
     top: 91px;
     font-size: 9px;
   }
@@ -1502,7 +1502,7 @@
     font-size: 13px;
   }
   .music-navigation {
-    left: 27px;
+    left: var(--music-content-left);
     gap: 20px;
     grid-template-columns: 145px 1fr 1fr;
     bottom: 57px;
@@ -1518,7 +1518,7 @@
     bottom: 33px;
   }
   .music-bottomline {
-    left: 27px;
+    left: var(--music-content-left);
     right: 27px;
     font-size: 7px;
   }
@@ -1553,7 +1553,7 @@
   }
   .music-back {
     top: 91px;
-    left: 27px;
+    left: var(--music-content-left);
   }
   .card-caption {
     left: 27px;
@@ -1597,8 +1597,8 @@
 }
 @media (max-width: 700px) {
   .music-header {
-    left: 20px;
-    right: 20px;
+    left: var(--music-content-left);
+    right: var(--music-content-left);
     top: 23px;
   }
   .music-brand strong {
@@ -1621,7 +1621,7 @@
     display: inline !important;
   }
   .library-status {
-    left: 22px;
+    left: var(--music-content-left);
     top: 87px;
     font-size: 8px;
     max-width: 85%;
@@ -1752,7 +1752,7 @@
   }
   .progress-area {
     position: absolute;
-    left: 22px;
+    left: var(--music-content-left);
     right: 22px;
     bottom: 16px;
     margin: 0;
@@ -1857,6 +1857,31 @@
     font-size: 10px;
   }
 }
+
+/* The archive's leading guide is shared by the brand, browse controls and
+   overview labels at every window width.  Fixed offsets here cause the
+   non-fullscreen layout to drift away from RHINE LAB. */
+.music-app .music-header,
+.music-app .music-view-toggle,
+.music-app .overview-heading,
+.music-app .library-status,
+.music-app .music-navigation,
+.music-app .music-bottomline { --content-guide: var(--music-content-left); }
+.music-app .music-header { left: var(--content-guide); right: var(--content-guide); }
+.music-app .music-view-toggle,
+.music-app .overview-heading,
+.music-app .library-status,
+.music-app .music-navigation { left: var(--content-guide); }
+.music-app .music-bottomline { left: var(--content-guide); }
+
+/* Keep the outgoing song out of the paint tree while the measured reel builds
+   the incoming title. This removes the one-frame stale-title flash on wheel
+   navigation without shifting the callout geometry. */
+.album-callout[data-title-pending="true"] #selection-title .music-title-rolling,
+.album-callout[data-title-pending="true"] #selection-title .music-title-rapid { visibility: hidden; }
+.selection-number-reel { display: inline-block; height: 1.2em; line-height: 1.2; overflow: hidden; vertical-align: bottom; font-variant-numeric: tabular-nums; }
+.selection-number-strip { display: flex; flex-direction: column; }
+.selection-number-strip > span { display: block; height: 1.2em; line-height: 1.2; }
 
 /* Placement follows the scene's aspect-ratio state, independently of font sizing. */
 .music-app[data-layout="portrait"] #album-detail-content {

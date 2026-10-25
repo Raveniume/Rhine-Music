@@ -48,13 +48,38 @@ export function setupMusicTextMotion(root: HTMLElement) {
     pendingWraps.add(read);
     if (!wrappingFrame) wrappingFrame = requestAnimationFrame(flushWrapping);
   };
-  const number = (id: string, digits = 2) =>
-    createRollingNumber(host(id, "number"), {
-      ...motion,
-      value: 1,
-      locales: "en-US",
-      format: { minimumIntegerDigits: digits, useGrouping: false },
-    });
+  const number = (id: string, digits = 2) => {
+    if (id !== 'selection-number' && id !== 'selection-code-number')
+      return createRollingNumber(host(id, 'number'), { ...motion, value: 1, locales: 'en-US', format: { minimumIntegerDigits: digits, useGrouping: false } });
+    const element = host(id, 'number');
+    element.classList.add('selection-number-reel');
+    let current = 1, animated = false, duration = motion.duration;
+    let animation: Animation | undefined;
+    const format = (value: number) => String(value).padStart(digits, '0');
+    element.textContent = format(current);
+    return {
+      update(options: {value?: number; animated?: boolean; duration?: number; direction?: string}) {
+        if (options.animated !== undefined) animated = options.animated;
+        if (options.duration !== undefined) duration = options.duration;
+        if (options.value === undefined || options.value === current) return;
+        const previous = current; current = options.value;
+        animation?.cancel();
+        element.setAttribute('aria-label', format(current));
+        if (!animated) { element.textContent = format(current); return; }
+        const down = options.direction === 'down' || options.direction === 'auto' && current < previous;
+        const strip = document.createElement('span'); strip.className = 'selection-number-strip';
+        for (const value of down ? [current, previous] : [previous, current]) {
+          const face = document.createElement('span'); face.textContent = format(value); strip.append(face);
+        }
+        element.replaceChildren(strip);
+        const from = down ? '-50%' : '0%', to = down ? '0%' : '-50%';
+        strip.style.transform = 'translateY(' + to + ')';
+        animation = strip.animate([{transform:'translateY('+from+')'}, {transform:'translateY('+to+')'}], {duration, easing:'cubic-bezier(.22,1,.36,1)'});
+        animation.onfinish = () => { element.textContent = format(current); animation = undefined; };
+      },
+      destroy() { animation?.cancel(); element.textContent = format(current); }
+    };
+  };
   const text = (id: string) =>
     createRollingText(host(id, "text"), {
       ...motion,
@@ -218,6 +243,7 @@ export function setupMusicTextMotion(root: HTMLElement) {
       });
       for (const key of Object.keys(texts) as (keyof typeof texts)[])
         texts[key].update({ text: value[key] });
+
     },
     finish() {
       setEnabled(false);

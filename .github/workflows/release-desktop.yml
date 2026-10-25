@@ -8,6 +8,9 @@ on:
 permissions:
   contents: write
 
+env:
+  VITE_PUBLIC_RELEASE: "1"
+
 jobs:
   build:
     strategy:
