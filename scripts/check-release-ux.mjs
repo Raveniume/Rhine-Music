@@ -117,7 +117,7 @@ try {
   await page.locator('[data-category="developer"]').click();
   await page.locator('[data-action="replay-boot"]').click();
   await page.locator('.rhine-loading').waitFor({state:'visible'});
-  await page.waitForTimeout(1500);
+  await page.waitForFunction(()=>Number(document.querySelector('.rhine-loading .opening-stage')?.dataset.bootFrame)>=330);
   await page.screenshot({path:`${output}/manual-full-opening.png`});
   await page.locator('.opening-skip').click();
   await page.locator('.music-boot-skip').waitFor({state:'visible'});
