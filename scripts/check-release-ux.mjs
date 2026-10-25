@@ -3,14 +3,37 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
-const output = 'artifacts/current-ux';
+import { spawn } from 'node:child_process';
+import path from 'node:path';
+const desktop=process.env.RHINE_DESKTOP_EXE;
+const output = desktop ? 'artifacts/current-native-ux' : 'artifacts/current-ux';
 await fs.mkdir(output, {recursive:true});
-const server = await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:{ignored:['**/src-tauri/**','**/artifacts/**','**/release/**','**/desktop-runtime/**']}},logLevel:'error'});
-await server.listen();
-const browser = await chromium.launch({executablePath:process.env.RHINE_BROWSER || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',headless:true,args:['--mute-audio','--use-angle=d3d11']});
-const page = await browser.newPage({viewport:{width:1280,height:800}});
+let server,browser,page,child;
+if(desktop) {
+  child=spawn(path.resolve(desktop),[],{windowsHide:true,stdio:'ignore',env:{...process.env,
+    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:'--remote-debugging-port=9336 --mute-audio',
+    WEBVIEW2_USER_DATA_FOLDER:path.resolve('artifacts/current-native-profile'),
+    RHINE_DESKTOP_DATA_DIR:path.resolve('artifacts/current-native-data')}});
+  try {
+    for(let i=0;i<100&&!browser;i++) {
+      if(child.exitCode!==null)throw Error('Desktop exited before WebView initialization');
+      try{browser=await chromium.connectOverCDP('http://127.0.0.1:9336',{timeout:2000});}catch{await new Promise(r=>setTimeout(r,300));}
+    }
+    if(!browser)throw Error('Desktop debugging connection unavailable');
+    for(let i=0;i<100&&!page;i++) {
+      page=browser.contexts()[0].pages().find(p=>p.url().includes('desktop=1')&&!/taskbar=1|tray=1/.test(p.url()));
+      if(!page)await new Promise(r=>setTimeout(r,300));
+    }
+    if(!page)throw Error('Desktop main window missing');
+  } catch(error) {await browser?.close();child.kill();throw error;}
+} else {
+  server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:{ignored:['**/src-tauri/**','**/artifacts/**','**/release/**','**/desktop-runtime/**']}},logLevel:'error'});
+  await server.listen();
+  browser=await chromium.launch({executablePath:process.env.RHINE_BROWSER || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',headless:true,args:['--mute-audio','--use-angle=d3d11']});
+  page=await browser.newPage({viewport:{width:1280,height:800}});
+}
 page.setDefaultTimeout(90000);
-const errors = [], report = {runtimeChecked:false,scope:'Real browser WebGL; synthetic account/data, muted, no private library',sizes:[]};
+const errors = [], report = {runtimeChecked:false,scope:desktop?'Windows production WebView2; isolated profile, synthetic data and muted audio':'Real browser WebGL; synthetic account/data, muted, no private library',sizes:[]};
 page.on('pageerror',e=>errors.push(e.stack));
 await page.addInitScript(()=>{localStorage.setItem('rhine-music-preferences',JSON.stringify({startupOpening:true,reduced:false,sfx:false,theme:'night',quality:'performance'}));});
 const silence=Buffer.alloc(44+8000*2*180);silence.write('RIFF');silence.writeUInt32LE(silence.length-8,4);silence.write('WAVEfmt ',8);silence.writeUInt32LE(16,16);silence.writeUInt16LE(1,20);silence.writeUInt16LE(1,22);silence.writeUInt32LE(8000,24);silence.writeUInt32LE(16000,28);silence.writeUInt16LE(2,32);silence.writeUInt16LE(16,34);silence.write('data',36);silence.writeUInt32LE(silence.length-44,40);
@@ -29,7 +52,7 @@ await page.route('**/api/**',async route=>{
   await route.fulfill({json}).catch(()=>{});
 });
 try {
-  await page.goto(server.resolvedUrls.local[0]);
+  if(desktop)await page.reload();else await page.goto(server.resolvedUrls.local[0]);
   await page.locator('.music-app').waitFor();
   await page.waitForFunction(()=>!document.querySelector('#music-loading'));
   await page.locator('.music-boot-skip').waitFor({state:'visible'});
@@ -52,6 +75,7 @@ try {
     await page.waitForTimeout(500);
     const tabs=[];
     for(const tab of ['lyrics','info','together']) {
+      if(tab==='together'&&await page.locator('#song-tab-together').count()===0)continue;
       await page.locator(`#song-tab-${tab}`).click(); await page.waitForTimeout(1000);
       const geometry=await page.evaluate(()=>{
         const box=s=>document.querySelector(s).getBoundingClientRect().toJSON();
@@ -89,9 +113,27 @@ try {
   await page.locator('[data-overview-playlist-open]').filter({hasText:'合成歌单'}).first().click();
   await page.locator('[aria-label="歌单歌曲列表"]').waitFor({state:'visible'});
   assert.ok((await page.locator('#album-detail-content > h1').textContent()).includes('合成歌单'));
+  await page.locator('[data-action="settings"]').first().click();
+  await page.locator('[data-category="developer"]').click();
+  await page.locator('[data-action="replay-boot"]').click();
+  await page.locator('.rhine-loading').waitFor({state:'visible'});
+  await page.waitForTimeout(1500);
+  await page.screenshot({path:`${output}/manual-full-opening.png`});
+  await page.locator('.opening-skip').click();
+  await page.locator('.music-boot-skip').waitFor({state:'visible'});
+  await page.locator('.music-boot-skip').click();
+  await page.waitForFunction(()=>document.querySelector('.music-app').dataset.musicBoot==='done');
+  report.manualFullOpening=true;
   assert.deepEqual(errors,[]);
+  if(desktop) {
+    await page.evaluate(()=>window.__TAURI__.core.invoke('desktop_close_decision',{behavior:'tray',remember:false}));
+    assert.equal(await page.evaluate(()=>window.__TAURI__.window.getCurrentWindow().isVisible()),false);
+    await page.evaluate(()=>window.__TAURI__.core.invoke('desktop_tray_action',{action:'show'}));
+    assert.equal(await page.evaluate(()=>window.__TAURI__.window.getCurrentWindow().isVisible()),true);
+    report.trayHideRestore=true;
+  }
   report.runtimeChecked=true;report.playlistEntrances=true;report.errors=errors;
   await fs.writeFile(`${output}/results.json`,JSON.stringify(report,null,2));
   console.log(JSON.stringify({passed:true,sizes:report.sizes.length,wheelFrames:frames.length,playlistEntrances:true}));
 } catch(error) {await page.screenshot({path:`${output}/failure.png`});console.error(errors);throw error;}
-finally {await browser.close();await server.close();}
+finally {await browser.close();await server?.close();child?.kill();}

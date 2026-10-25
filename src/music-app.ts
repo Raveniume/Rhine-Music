@@ -2921,7 +2921,22 @@ document.addEventListener("click", (e) => {
       setOverview(!overview);
       break;
     case "replay-boot":
-      closePanel(() => { setOverview(false, false); boot?.replay(); });
+      closePanel(() => {
+        if (!ready || !boot || frameDisposed) return;
+        setOverview(false, false);
+        // Replay the same original loading film shown by installer launch,
+        // then hand over to the music prologue and live shelf wave.
+        loadingOpening?.dispose();
+        const opening = new LoadingOpening(stage);
+        loadingOpening = opening;
+        opening.setHidden(document.hidden || nativeHidden);
+        opening.setReduced(preferences.reduced);
+        void opening.completeLoading().then(() => {
+          opening.dispose();
+          if (loadingOpening === opening) loadingOpening = undefined;
+          if (!frameDisposed) boot?.replay();
+        });
+      });
       break;
     case "lighting-debug":
       closePanel(() => {
