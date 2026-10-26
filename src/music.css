@@ -153,7 +153,8 @@
   padding-top: 7px;
   min-height: 30px;
 }
-.music-topnav > *, .music-topnav .minimal-transport, .music-topnav .minimal-transport > button { box-sizing:border-box; height:32px; min-height:32px; align-items:center; }
+.music-topnav > *, .music-topnav .minimal-transport, .music-topnav .minimal-transport > button { box-sizing:border-box; height:32px; min-height:32px; display:flex; align-items:center; }
+.music-topnav > button { justify-content:center; }
 .music-topnav .minimal-transport { margin-top:0; padding-top:0; padding-bottom:0; }
 .music-topnav > button {
   display: flex;
@@ -167,6 +168,7 @@
 .music-topnav svg {
   width: 17px;
   height: 17px;
+  display: block;
 }
 .music-topnav kbd {
   font-family: inherit;
@@ -1252,7 +1254,7 @@
 .login-provider-tabs { display:flex; gap:22px; margin-bottom:20px; border-bottom:1px solid var(--line); }
 .login-provider-tabs button { min-height:36px; padding:0 0 10px; border:0; border-bottom:2px solid transparent; background:transparent; color:var(--muted); font:inherit; cursor:pointer; }
 .login-provider-tabs button[aria-selected="true"] { color:var(--ink); border-bottom-color:var(--accent); }
-.theme-follow-system { border-bottom:1px solid var(--line); padding-bottom:16px; }
+.music-app .settings-row.theme-follow-system { border-bottom:0; padding-bottom:4px; }
 .theme-cards[aria-disabled="true"] { opacity:.5; }
 .theme-cards button:disabled { cursor:not-allowed; }
 .settings-row {
@@ -1879,7 +1881,7 @@
 .music-app .music-navigation,
 .music-app .music-bottomline { --content-guide: var(--music-content-left); }
 .music-app .music-header { left: var(--content-guide); right: var(--content-guide); }
-.music-topnav > *, .music-topnav .minimal-transport, .music-topnav .minimal-transport > button { box-sizing:border-box; height:32px; min-height:32px; align-items:center; }
+.music-topnav > *, .music-topnav .minimal-transport, .music-topnav .minimal-transport > button { box-sizing:border-box; height:32px; min-height:32px; display:flex; align-items:center; }
 .music-topnav .minimal-transport { margin-top:0; padding-top:0; padding-bottom:0; }
 .music-app .music-view-toggle,
 .music-app .overview-heading,
@@ -2296,15 +2298,30 @@
 .music-topnav .minimal-transport {
   border-left: 1px solid var(--line);
   padding-left: 12px;
-  margin-top: -5px;
+  margin-top: 0;
   gap: 6px;
-  min-height: 30px;
+  height: 32px;
+  min-height: 32px;
   align-items: center;
 }
 .music-topnav .minimal-transport button {
   width: 29px;
   height: 29px;
+  min-height: 29px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
   opacity: 0.8;
+}
+.music-topnav .minimal-transport button svg {
+  display: block;
+  flex: 0 0 auto;
+}
+.music-topnav .minimal-transport > #play-queue-button,
+.music-topnav .minimal-transport .transport-volume-button {
+  padding: 4px;
 }
 #introduction-progress {
   width: 100%;

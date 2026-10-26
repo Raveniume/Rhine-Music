@@ -162,6 +162,7 @@ const preferences = {
     qualityMode: undefined as QualityMode | undefined,
     reduced: false,
     startupOpening: true,
+    pageTextMask: true,
     volume: 0.65,
     playbackMode: "sequential" as PlaybackMode,
     // Leave unset until legacy preferences have been read; a default here
@@ -201,6 +202,7 @@ const preferences = {
       qualityMode: QualityMode;
       reduced: boolean;
       startupOpening: boolean;
+      pageTextMask: boolean;
       volume: number;
       playbackMode: PlaybackMode;
       songTransition: SongTransitionMode;
@@ -232,6 +234,7 @@ preferences.lyricAreaSize = typeof savedLyricSize === "number" && Number.isFinit
 delete preferences.lyricAreaHeight;
 preferences.keyboardSyncPlayback = preferences.keyboardSyncPlayback === true;
 preferences.startupOpening = preferences.startupOpening !== false;
+preferences.pageTextMask = preferences.pageTextMask !== false;
 preferences.keybindings = normalizeKeybindings(preferences.keybindings);
 preferences.frameLimit = normalizeFrameLimit(preferences.frameLimit);
 preferences.visualizer = normalizeVisualizer(preferences.visualizer ?? {});
@@ -555,8 +558,8 @@ const tabTransition = new ContentTransition();
 const detailTransition = new SurfaceTransition(
   $("#music-detail"),
   $("#album-detail-content"),
-  360,
   240,
+  120,
   "right",
 );
 const browseTransition = new SurfaceTransition(
@@ -564,8 +567,8 @@ const browseTransition = new SurfaceTransition(
   undefined,
   // Keep the existing reveal timing, but fade each overlay in its own layer.
   // Fading the parent traps its text below the night vignette until opacity=1.
-  720,
-  140,
+  420,
+  90,
   "up",
   "cubic-bezier(0.45, 0, 0.25, 1)",
   [$(".music-browse-veil"), $(".album-callout"), $(".music-navigation")],
@@ -580,14 +583,20 @@ async function openPlaylistDetail(row: number, offset = 0) {
   const playlist = playlistLibrary.playlists[row];
   if (!playlist || !accountActive) return;
   const epoch = ++playlistDetailEpoch, key = accountKey;
-  if (overview) setOverview(false);
+  if (overview) setOverview(false, false);
   playlistDetail = { row, offset, loading: true, error: '' };
   // Paint the playlist shell immediately. The 3D selection and remote page
   // fetch continue in parallel, so the detail surface never waits on camera
   // settling before showing useful content.
   renderDetail();
-  if (!presentation.openingOrDetail) presentation.open();
   const navigation = navigatePlaylist(row, offset);
+  if (!presentation.openingOrDetail) presentation.open();
+  // The playlist is a readable list while the shelf camera is still moving.
+  // Do not make opening it depend on the physical cover's readiness gate.
+  detailTransition.show(preferences.reduced);
+  $('#music-detail').inert = !!panel;
+  $('#music-detail').setAttribute('aria-hidden', 'false');
+  $('#album-detail-content').inert = false;
   try { await playlistLibrary.ensure(row, offset, true); }
   catch (error) { if (epoch === playlistDetailEpoch && playlistDetail) playlistDetail.error = (error as Error).message; }
   await navigation;
@@ -600,13 +609,14 @@ function renderPlaylistDetail() {
   const playlist = playlistLibrary.playlists[detail.row];
   if (!playlist) return;
   songView.setVisible(false);
+  const previousScroll = detailIdentity === `playlist:${playlist.id}` ? $('#album-detail-content').scrollTop : 0;
   detailIdentity = `playlist:${playlist.id}`;
   const tracks = Array.from({ length: Math.min(50, Math.max(0, playlist.trackCount - detail.offset)) }, (_, index) => {
     const position = detail.offset + index, track = playlistLibrary.track(detail.row, position);
     return `<button class="track-row" data-playlist-detail-track="${position}" ${!track ? 'disabled' : ''}><span class="track-number">${String(position + 1).padStart(2, '0')}</span><span class="track-name"><strong>${esc(track?.title || (detail.loading ? '正在读取…' : '歌曲不可用'))}</strong><small>${esc(track?.artist || '')}</small></span><span class="track-duration">${track ? time(track.duration) : ''}</span></button>`;
   }).join('');
   $('#album-detail-content').innerHTML = `<div class="detail-overline"><span>PLAYLIST ${String(detail.row + 1).padStart(3, '0')}</span><span>${esc(musicPlatforms[activeProvider])}</span></div><h1>${esc(playlist.name)}</h1><p class="detail-artist">${playlist.trackCount} 首歌曲 · ${playlist.owned ? '创建的歌单' : '收藏的歌单'}</p><div class="playlist-detail-tools"><strong>歌单曲目</strong><button class="text-button" data-action="playlist-detail-prev" ${detail.offset === 0 ? 'disabled' : ''}>上一页</button><span>${Math.floor(detail.offset / 50) + 1} / ${Math.max(1, Math.ceil(playlist.trackCount / 50))}</span><button class="text-button" data-action="playlist-detail-next" ${detail.offset + 50 >= playlist.trackCount ? 'disabled' : ''}>下一页</button></div><p role="status">${esc(detail.error)}</p><div class="track-list" aria-label="歌单歌曲列表">${tracks || '<p>这个歌单还没有歌曲。</p>'}</div>`;
-  $('#album-detail-content').scrollTop = 0;
+  $('#album-detail-content').scrollTop = previousScroll;
 }
 const trackFocus = new MusicTrackFocus();
 let pendingTrackReveal: { albumId: string; trackId: string } | undefined;
@@ -629,8 +639,8 @@ const presentation = new MusicPresentation({
   // Reveal the detail surface once the selected box is readable. The scene's
   // final readiness gate still controls inspection and camera completion, but
   // the user gets immediate structural feedback during the remaining settle.
-  presentationReady: () => Boolean(scene && (scene.musicPresentationReady || scene.musicPresentationPreviewReady)),
-  archiveReady: () => !!scene?.musicArchiveReady && scene.musicOverviewProgress < .02,
+  presentationReady: () => Boolean(playlistDetail || (scene && (scene.musicPresentationReady || scene.musicPresentationPreviewReady))),
+  archiveReady: () => !!scene?.musicArchiveReady && (!!playlistDetail || scene.musicOverviewProgress < .02),
   archiveInteractive: () => scene?.musicArchiveInteractive ?? false,
   enterCamera: () => {
     scene?.setMode("detail");
@@ -655,6 +665,7 @@ const presentation = new MusicPresentation({
   prepareMenu: () => {
     songView.setVisible(false);
     activeTab = "tracks";
+    if (playlistDetail) { renderDetail(); return; }
     detailTransition.hide(true);
     renderDetail();
     const content = $("#album-detail-content");
@@ -665,13 +676,13 @@ const presentation = new MusicPresentation({
   },
   showMenu: () => {
     const detail = $("#music-detail"), content = $("#album-detail-content");
-    detailTransition.show(preferences.reduced);
+    if (detail.hidden || !playlistDetail) detailTransition.show(preferences.reduced);
     updateSongTransport();
     detail.inert = !!panel;
     detail.setAttribute("aria-hidden", "false");
     content.inert = false;
     content.scrollTop = 0;
-    documentDecryption.reset(content, preferences.reduced);
+    documentDecryption.reset(content, preferences.reduced || !preferences.pageTextMask);
     pendingDetailFocus = true;
   },
   hideMenu: (done) => {
@@ -1483,7 +1494,7 @@ function renderDetail() {
   syncTabIndicator(false);
   documentDecryption.reset(
     article,
-    preferences.reduced,
+    preferences.reduced || !preferences.pageTextMask,
   );
   updatePlayingRows();
   if (songDetail && a.tracks.length) songView.mount(a, playerState, mode === 'detail');
@@ -2210,7 +2221,7 @@ const together = new ListenTogether(stage, player, notify, async (track, queue) 
   playlistPlaybackId = undefined; playlistPlayEpoch++; accountView = false; browseLibraryDuringPlayback = false;
   await player.play(track.id, queue);
 });
-const songView = new MusicSongView($('#mini-playback-below'), seconds => player.seek(seconds), () => preferences.reduced, tab => together.show(tab === 'together'));
+const songView = new MusicSongView($('#mini-playback-below'), seconds => player.seek(seconds), () => preferences.reduced, tab => together.show(tab === 'together'), () => preferences.pageTextMask);
 const visualizer = new MusicVisualizer(stage, target => player.readSpectrum(target), () => ({
   state: playerState, detail: mode === 'detail', blocked: !!panel || !!viewer?.isOpen, reduced: preferences.reduced, sampleRate: player.spectrumSampleRate,
 }));
@@ -2477,8 +2488,8 @@ function renderSettingsPanel() {
   disposeVisualizerColor?.(); disposeVisualizerColor = undefined;
   lyricSettingsPreview.stop();
   $("#panel-body").innerHTML =
-    `<section class="panel-section" data-settings-group="appearance"><h3>外观主题</h3><label class="settings-row theme-follow-system"><span>跟随系统</span><input type="checkbox" id="follow-system-theme" ${preferences.followSystemTheme ? "checked" : ""}></label><div class="theme-cards" aria-disabled="${preferences.followSystemTheme}">${(["day", "night"] as Theme[]).map((t) => `<button data-theme="${t}" aria-pressed="${preferences.theme === t}" ${preferences.followSystemTheme ? 'disabled' : ''} class="${t}"><i></i><strong>${themeNames[t]}</strong><span>${t === "day" ? "暖白玻璃与日光" : "极简星空与透光白卡"}</span></button>`).join("")}</div></section>
-    <section class="panel-section" data-settings-group="appearance"><h3>启动体验</h3><label class="settings-row"><span>启动时展示元素滚动</span><input type="checkbox" id="startup-opening" aria-label="启动时展示元素滚动" ${preferences.startupOpening ? "checked" : ""}></label><p class="quality-note">日常启动只显示三维元素滚动；关闭后直接进入档案架。安装包首次启动会播放完整开场，在此处选择“观看完整启动动画”可随时重播。</p></section>
+    `<section class="panel-section" data-settings-group="appearance"><h3>外观主题</h3><label class="settings-row theme-follow-system"><span>跟随系统</span><input type="checkbox" id="follow-system-theme" ${preferences.followSystemTheme ? "checked" : ""}></label><div class="theme-cards" aria-disabled="${preferences.followSystemTheme}">${(["day", "night"] as Theme[]).map((t) => `<button data-theme="${t}" aria-pressed="${preferences.theme === t}" ${preferences.followSystemTheme ? 'disabled' : ''} class="${t}"><i></i><strong>${themeNames[t]}</strong><span>${t === "day" ? "浅色背景" : "深色背景"}</span></button>`).join("")}</div></section>
+    <section class="panel-section" data-settings-group="appearance"><h3>启动体验</h3><label class="settings-row"><span>启动时展示元素滚动</span><input type="checkbox" id="startup-opening" aria-label="启动时展示元素滚动" ${preferences.startupOpening ? "checked" : ""}></label><p class="quality-note">开启后，启动时播放档案架滚动动画。安装后首次打开会播放完整开场，也可在开发者设置中重播。</p></section>
     <section class="panel-section" data-settings-group="appearance"><h3>关闭行为</h3><label class="settings-row"><span>点击关闭按钮时</span><select id="close-behavior" aria-label="点击关闭按钮时"><option value="ask" ${preferences.closeBehavior === 'ask' ? 'selected' : ''}>每次询问</option><option value="tray" ${preferences.closeBehavior === 'tray' ? 'selected' : ''}>最小化到托盘</option><option value="exit" ${preferences.closeBehavior === 'exit' ? 'selected' : ''}>彻底退出</option></select></label><p class="quality-note">托盘模式会继续播放音乐，并保留任务栏歌词与播放控制。</p></section>
     ${visualizerMarkup(preferences.visualizer!)}
     <section class="panel-section" data-settings-group="appearance"><h3>歌词显示</h3><label class="settings-row"><span>歌词区域高度 <output id="lyric-area-size-value">${preferences.lyricAreaSize}%</output></span><input type="range" id="lyric-area-size" aria-label="歌词区域高度" min="40" max="100" step="5" value="${preferences.lyricAreaSize}"></label><p class="quality-note">窗口较小时会保留最低阅读高度，保证歌词和进度条可见。</p></section>
@@ -2495,7 +2506,7 @@ function renderSettingsPanel() {
     <section class="panel-section" data-settings-group="display"><h3>帧率</h3><label class="settings-row"><span>帧率上限</span><select id="frame-limit" aria-label="帧率上限">${FRAME_LIMITS.map(value => `<option value="${value}" ${preferences.frameLimit === value ? 'selected' : ''}>${value ? `${value} FPS` : '不限制'}</option>`).join('')}</select></label><p class="quality-note">实际帧率取决于显卡性能及屏幕刷新率。不限制时跟随屏幕刷新；后台窗口仍会暂停三维绘制。</p></section>
     <section class="panel-section" data-settings-group="display"><h3>玻璃遮挡优化</h3><label class="settings-row"><span>可见区域绘制</span><select id="glass-occlusion" aria-label="玻璃遮挡优化"><option value="on" ${glassOcclusionMode === "on" ? "selected" : ""}>开启遮挡优化</option><option value="off" ${glassOcclusionMode === "off" ? "selected" : ""}>关闭 · Perf6 对照</option><option value="debug" ${glassOcclusionMode === "debug" ? "selected" : ""}>三类区域调试</option></select></label><button class="text-button" data-action="copy-performance">复制性能诊断 ↗</button></section>
     <section class="panel-section" data-settings-group="developer"><h3>在线错误调试</h3><label class="settings-row"><span>显示详细报错</span><input type="checkbox" id="online-error-display" ${preferences.onlineErrorDisplay ? "checked" : ""}></label><button class="text-button" data-action="show-online-errors" ${preferences.onlineErrorDisplay ? "" : "disabled"}>查看 / 复制报错</button><button class="text-button" data-action="copy-performance">复制性能诊断 ↗</button></section>
-    <section class="panel-section" data-settings-group="appearance"><h3>动效与显示</h3><label class="settings-row"><span>减少动态效果</span><input type="checkbox" id="reduced-motion" ${preferences.reduced ? "checked" : ""}></label></section><section class="panel-section" data-settings-group="display"><h3>窗口与全屏</h3>${windowDisplayMarkup()}</section><section class="panel-section" data-settings-group="developer"><h3>界面维护</h3><button class="text-button" data-action="replay-boot">观看完整启动动画 ↗</button><button class="text-button" data-action="reload-interface">重新载入界面 ↻</button></section>
+    <section class="panel-section" data-settings-group="appearance"><h3>动效与显示</h3><label class="settings-row"><span>页面文字遮罩动画</span><input type="checkbox" id="page-text-mask" ${preferences.pageTextMask ? "checked" : ""}></label><p class="quality-note">进入页面时用色块揭示文字。关闭后直接显示文字。</p><label class="settings-row"><span>减少动态效果</span><input type="checkbox" id="reduced-motion" ${preferences.reduced ? "checked" : ""}></label></section><section class="panel-section" data-settings-group="display"><h3>窗口与全屏</h3>${windowDisplayMarkup()}</section><section class="panel-section" data-settings-group="developer"><h3>界面维护</h3><button class="text-button" data-action="replay-boot">观看完整启动动画 ↗</button><button class="text-button" data-action="reload-interface">重新载入界面 ↻</button></section>
     <section class="panel-section" data-settings-group="appearance"><h3>声音</h3><label class="settings-row"><span>歌曲音量</span><input type="range" id="volume" aria-label="歌曲音量" min="0" max="100" value="${Math.round(preferences.volume * 100)}"></label><label class="settings-row"><span>歌曲衔接</span><select id="song-fade-setting" aria-label="歌曲衔接方式"><option value="fade-out" ${preferences.songTransition === "fade-out" ? "selected" : ""}>淡出但不淡入</option><option value="fade-in-out" ${preferences.songTransition === "fade-in-out" ? "selected" : ""}>淡出淡入</option><option value="gapless" ${preferences.songTransition === "gapless" ? "selected" : ""}>无缝播放</option></select></label><label class="settings-row"><span>界面音效</span><input type="checkbox" id="sound-setting" ${preferences.sound ? "checked" : ""}></label><label class="settings-row"><span>音效音量</span><input type="range" id="sound-volume" aria-label="音效音量" min="0" max="100" value="${Math.round(preferences.soundVolume * 100)}"></label><label class="settings-row"><span>氛围 BGM</span><input type="checkbox" id="bgm-setting" ${preferences.bgm ? "checked" : ""}></label><label class="settings-row"><span>BGM 音量</span><input type="range" id="bgm-volume" aria-label="BGM 音量" min="0" max="100" value="${Math.round(preferences.bgmVolume * 100)}"></label><button class="text-button" data-action="sound-preview">试听界面音效 ↗</button></section>
     <details class="panel-section" id="musicbrainz-settings" data-settings-group="local"><summary>高级设置 · MusicBrainz</summary><button data-action="enrich-library" class="text-button">补充缺失的在线资料 ↗</button><div id="online-config"></div></details>
     ${aboutMarkup(displayVersion)}`;
@@ -2707,6 +2718,14 @@ document.addEventListener("click", (e) => {
     "button, [data-action]",
   );
   if (!target) return;
+  if (target.dataset.loginProvider) {
+    const provider = target.dataset.loginProvider as MusicProvider;
+    if (provider === 'netease' || provider === 'qq') {
+      loginProvider = provider;
+      renderLoginPanel();
+    }
+    return;
+  }
   if (target.dataset.playlistDetailTrack !== undefined && playlistDetail) {
     void openPlaylistSongDetail(playlistDetail.row, Number(target.dataset.playlistDetailTrack)); return;
   }
@@ -3281,6 +3300,13 @@ document.addEventListener("change", (e) => {
     updateSelection();
     savePrefs();
   }
+  if (el.id === "page-text-mask") {
+    preferences.pageTextMask = el.checked;
+    stage.classList.toggle('no-text-masks', !el.checked);
+    documentDecryption.reset($('#album-detail-content'), preferences.reduced || !el.checked);
+    updateSongTransport();
+    savePrefs();
+  }
   if (el.id === "startup-opening") {
     preferences.startupOpening = el.checked;
     savePrefs();
@@ -3457,7 +3483,7 @@ function frame(ms: number) {
       documentDecryption.update(
         textMotionTime,
         scene.decryptionFrame,
-        preferences.reduced,
+        preferences.reduced || !preferences.pageTextMask,
         detailTextVisible,
       );
       if (pendingDetailFocus && !panel && !viewer?.isOpen) {
@@ -3504,6 +3530,7 @@ function resetFrameTiming() {
   frameTiming.reset();
 }
 function suspendPage() {
+  effects.setHidden(true);
   loadingOpening?.setHidden(true);
   visualizer.setHidden(true);
   songView.setVisible(false);
@@ -3514,6 +3541,7 @@ function suspendPage() {
   resetFrameTiming();
 }
 function resumePage() {
+  effects.setHidden(document.hidden || nativeHidden);
   loadingOpening?.setHidden(document.hidden || nativeHidden);
   visualizer.setHidden(document.hidden || nativeHidden);
   if (frameDisposed || document.hidden || nativeHidden) return;
@@ -3632,6 +3660,7 @@ async function start() {
       `三维专辑阵列，上下切${sortLabel.column}，左右切专辑`,
     );
     stage.classList.toggle("reduce-motion", preferences.reduced);
+    stage.classList.toggle("no-text-masks", !preferences.pageTextMask);
     scene.setTheme(preferences.theme);
     preferences.renderQuality = renderQuality; savePrefs();
     scene.setReduced(preferences.reduced);

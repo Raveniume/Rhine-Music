@@ -15,11 +15,14 @@ function newer(remote: string, current: string) {
   return false;
 }
 
+let checking = false;
 export async function checkForUpdates(current: string, interactive = true) {
+  if (checking) return false;
+  checking = true;
   const status = document.querySelector<HTMLElement>('#update-status');
   if (status) status.textContent = '正在连接 GitHub 检查更新…';
   try {
-    const release: Release = await (window.__TAURI_INTERNALS__ ? invoke('desktop_check_update') : fetch('https://api.github.com/repos/Raveniume/Rhine-Music/releases/latest').then(response => response.json()));
+    const release: Release = await (window.__TAURI_INTERNALS__ ? invoke('desktop_check_update') : fetch('https://api.github.com/repos/Raveniume/Rhine-Music/releases/latest', { signal: AbortSignal.timeout(15000) }).then(response => { if (!response.ok) throw Error(`GitHub HTTP ${response.status}`); return response.json(); }));
     const remote = String(release.tag_name || release.name || '').replace(/^v/i, '');
     if (!remote || !newer(remote, current)) { if (status) status.textContent = `已是最新版本 V${current}`; return false; }
     const assets = Array.isArray(release.assets) ? release.assets : [];
@@ -43,7 +46,7 @@ export async function checkForUpdates(current: string, interactive = true) {
   } catch (error) {
     if (status) status.textContent = `检查更新失败：${String(error)}`;
     return false;
-  }
+  } finally { checking = false; }
 }
 
 function askUpdate(message: string) {
@@ -51,13 +54,25 @@ function askUpdate(message: string) {
     document.querySelector<HTMLElement>('.update-confirm-scrim')?.remove();
     const scrim = document.createElement('div');
     scrim.className = 'update-confirm-scrim';
-    scrim.innerHTML = `<section class="update-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="update-confirm-title"><small>RHINE MUSIC / UPDATE</small><h2 id="update-confirm-title">发现新版本</h2><p>${message}</p><div class="update-confirm-actions"><button type="button" data-update-choice="cancel">稍后</button><button type="button" class="primary-button" data-update-choice="confirm">下载并安装</button></div></section>`;
+    scrim.innerHTML = `<section class="update-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="update-confirm-title"><small>RHINE MUSIC / UPDATE</small><h2 id="update-confirm-title">发现新版本</h2><p></p><div class="update-confirm-actions"><button type="button" data-update-choice="cancel">稍后</button><button type="button" class="primary-button" data-update-choice="confirm">下载并安装</button></div></section>`;
+    scrim.querySelector('p')!.textContent = message;
+    const previousFocus = document.activeElement as HTMLElement | null;
     document.body.append(scrim);
-    const finish = (value: boolean) => { scrim.remove(); resolve(value); };
+    const finish = (value: boolean) => { scrim.remove(); previousFocus?.focus(); resolve(value); };
     scrim.addEventListener('click', event => {
       const choice = (event.target as HTMLElement).closest<HTMLElement>('[data-update-choice]')?.dataset.updateChoice;
       if (choice === 'confirm') finish(true);
       else if (choice === 'cancel' || event.target === scrim) finish(false);
+    });
+    scrim.addEventListener('keydown', event => {
+      event.stopPropagation();
+      if (event.key === 'Escape') { event.preventDefault(); finish(false); }
+      if (event.key === 'Tab') {
+        event.preventDefault();
+        const buttons = [...scrim.querySelectorAll<HTMLButtonElement>('button')];
+        const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+        buttons[(index + (event.shiftKey ? -1 : 1) + buttons.length) % buttons.length].focus();
+      }
     });
     scrim.querySelector<HTMLButtonElement>('[data-update-choice="confirm"]')?.focus();
   });

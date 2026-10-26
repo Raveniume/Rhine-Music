@@ -71,7 +71,7 @@ pub fn update(app: AppHandle, payload: DesktopLyricPayload) -> Result<(), String
     }
     #[cfg(target_os = "windows")]
     if let Some(window) = app.get_webview_window("taskbar-lyrics") {
-        if let Some(placement) = taskbar_placement() {
+        if let Some(placement) = taskbar_placement(window.scale_factor().unwrap_or(1.0)) {
             apply_placement(&window, placement, payload.visible);
         } else {
             let _ = window.hide();
@@ -291,7 +291,7 @@ fn taskbar_geometry(
 }
 
 #[cfg(target_os = "windows")]
-fn taskbar_placement() -> Option<TaskbarGeometry> {
+fn taskbar_placement(scale: f64) -> Option<TaskbarGeometry> {
     use std::mem::size_of;
     use windows_sys::Win32::UI::Shell::{
         SHAppBarMessage, ABE_LEFT, ABE_RIGHT, ABE_TOP, ABM_GETTASKBARPOS,
@@ -316,16 +316,19 @@ fn taskbar_placement() -> Option<TaskbarGeometry> {
         ABE_RIGHT => TaskbarEdge::Right,
         _ => TaskbarEdge::Bottom,
     };
+    let horizontal = matches!(edge, TaskbarEdge::Bottom | TaskbarEdge::Top);
+    let inset = ((4.0 * scale).round() as u32).min(taskbar_height / 4);
+    let lyric_height = if horizontal { taskbar_height.saturating_sub(inset * 2) } else { (40.0 * scale).round() as u32 };
     taskbar_geometry(
         rect.left,
-        rect.top,
+        rect.top + if horizontal { inset as i32 } else { 0 },
         taskbar_width,
-        taskbar_height,
+        if horizontal { lyric_height } else { taskbar_height },
         edge,
-        180,
-        620,
-        160,
-        56,
+        (180.0 * scale).round() as u32,
+        (480.0 * scale).round() as u32,
+        (160.0 * scale).round() as u32,
+        lyric_height,
         false,
     )
 }
@@ -336,13 +339,34 @@ fn apply_placement(
     placement: TaskbarGeometry,
     lyrics_visible: bool,
 ) {
-    let _ = window.set_size(PhysicalSize::new(placement.width, placement.height));
-    let _ = window.set_position(PhysicalPosition::new(placement.x, placement.y));
+    configure_native_taskbar_window(window);
+    let size = PhysicalSize::new(placement.width, placement.height);
+    let position = PhysicalPosition::new(placement.x, placement.y);
+    if window.inner_size().ok() != Some(size) { let _ = window.set_size(size); }
+    if window.outer_position().ok() != Some(position) { let _ = window.set_position(position); }
     if placement.hidden || !lyrics_visible {
         let _ = window.hide();
     } else {
         let _ = window.show();
     }
+}
+
+#[cfg(target_os = "windows")]
+fn configure_native_taskbar_window(window: &tauri::WebviewWindow) {
+    use windows_sys::Win32::Foundation::HWND;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE,
+        WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    };
+    let Ok(native) = window.hwnd() else { return; };
+    let hwnd = native.0 as HWND;
+    let current = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) };
+    let required = (WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST) as isize;
+    if current & required != required {
+        unsafe { SetWindowLongPtrW(hwnd, GWL_EXSTYLE, current | required); }
+    }
+    let _ = window.set_focusable(false);
+    let _ = window.set_always_on_top(true);
 }
 
 #[cfg(target_os = "windows")]
@@ -352,7 +376,8 @@ pub fn setup_taskbar_window(app: &AppHandle, service_url: &tauri::Url) -> Result
     let window =
         WebviewWindowBuilder::new(app, "taskbar-lyrics", WebviewUrl::External(taskbar_url))
             .title("RhineMusic Lyrics")
-            .inner_size(620.0, 56.0)
+            .inner_size(480.0, 40.0)
+            .shadow(false)
             .decorations(false)
             .transparent(true)
             .always_on_top(true)
@@ -363,26 +388,23 @@ pub fn setup_taskbar_window(app: &AppHandle, service_url: &tauri::Url) -> Result
             .visible(false)
             .build()
             .map_err(|e| e.to_string())?;
-    if let Some(placement) = taskbar_placement() {
+    if let Some(placement) = taskbar_placement(window.scale_factor().unwrap_or(1.0)) {
         apply_placement(&window, placement, false);
     }
     let app_handle = app.clone();
     std::thread::spawn(move || {
         let mut previous = None;
         loop {
-            std::thread::sleep(std::time::Duration::from_secs(2));
-            let placement = taskbar_placement();
+            std::thread::sleep(std::time::Duration::from_millis(500));
             let Some(window) = app_handle.get_webview_window("taskbar-lyrics") else {
                 break;
             };
+            let placement = taskbar_placement(window.scale_factor().unwrap_or(1.0));
             let active = LYRICS_VISIBLE.load(Ordering::Acquire);
-            let visible = window.is_visible().unwrap_or(false);
             // Explorer can hide a tool window during Alt+Tab or a taskbar
             // refresh without changing the taskbar rectangle. Re-apply the
             // placement while lyrics are active so the window is restored.
-            if placement == previous && (!active || visible) {
-                continue;
-            }
+            if placement == previous && !active { continue; }
             previous = placement;
             let _ = app_handle.run_on_main_thread(move || {
                 if let Some(value) = placement {
@@ -411,19 +433,19 @@ mod tests {
             180,
             620,
             160,
-            56,
+            68,
             false,
         )
         .unwrap();
         assert_eq!(
             (bottom.x, bottom.y, bottom.width, bottom.hidden),
-            (180, 1024, 620, false)
+            (180, 1012, 620, false)
         );
         let top =
-            taskbar_geometry(0, 0, 1920, 40, TaskbarEdge::Top, 180, 620, 160, 56, false).unwrap();
+            taskbar_geometry(0, 0, 1920, 40, TaskbarEdge::Top, 180, 620, 160, 68, false).unwrap();
         assert_eq!((top.x, top.y), (180, 0));
         let left =
-            taskbar_geometry(0, 0, 48, 1080, TaskbarEdge::Left, 180, 620, 160, 56, false).unwrap();
+            taskbar_geometry(0, 0, 48, 1080, TaskbarEdge::Left, 180, 620, 160, 68, false).unwrap();
         assert_eq!(
             (left.x, left.y, left.width, left.hidden),
             (50, 180, 620, false)
@@ -437,7 +459,7 @@ mod tests {
             180,
             620,
             160,
-            56,
+            68,
             false,
         )
         .unwrap();
@@ -455,7 +477,7 @@ mod tests {
             180,
             620,
             160,
-            56,
+            68,
             false,
         )
         .unwrap();

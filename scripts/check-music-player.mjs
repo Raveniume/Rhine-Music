@@ -143,7 +143,7 @@ test('online playback resolves a fresh source and rejects stale responses after 
   assert.match(player.state.transitionWarning, /试听/);
   player.stop(); const again = player.play(second.id); await settle();
   assert.equal(pending.length, 3, 'each new playback refreshes expiring URLs');
-  const denied = { ok: false, json: async () => ({ error: '网易云未提供播放权限。' }) }; denied.clone = () => denied;
+  const denied = { ok: false, status: 403, json: async () => ({ error: '网易云未提供播放权限。' }) }; denied.clone = () => denied;
   pending[2].resolve(denied); await again;
   assert.equal(player.state.transport, 'error'); assert.equal(player.state.error, '网易云未提供播放权限。');
   player.dispose();

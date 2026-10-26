@@ -40,6 +40,7 @@ const silence=Buffer.alloc(44+8000*2*180);silence.write('RIFF');silence.writeUIn
 const tracks = Array.from({length:120},(_,i)=>({id:`netease-${1000+i}`,title:`合成曲目 ${String(i+1).padStart(3,'0')}`,artist:'测试歌手 / 合作歌手',albumId:`album-${i}`,duration:180,format:'在线音频',browserPlayable:true,onlineSource:{provider:'netease',id:String(1000+i),albumTitle:'合成专辑'}}));
 await page.route('**/api/**',async route=>{
   const url=new URL(route.request().url()), p=url.pathname;
+  if (p.endsWith('/auth/start')) { await route.fulfill({json:{id:'synthetic-qr',image:'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjgiIGhlaWdodD0iMTI4Ij48cmVjdCB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCIgc3R5bGU9ImZpbGw6d2hpdGUiLz48L3N2Zz4=',expiresAt:Date.now()+60000}}); return; }
   if(p==='/api/fixture.wav'){await route.fulfill({contentType:'audio/wav',body:silence});return;}
   const json=p.includes('/prepare/')?{audioUrl:url.origin+'/api/fixture.wav',duration:180}:p==='/api/library'?{version:1,albums:[],genres:[],roots:[],scan:{running:false},onlineEnabled:true}:
     p==='/api/audio/capabilities'?{decoderAvailable:false,nativeAvailable:false,devices:[]}:
@@ -79,10 +80,15 @@ try {
       await page.locator(`#song-tab-${tab}`).click(); await page.waitForTimeout(1000);
       const geometry=await page.evaluate(()=>{
         const box=s=>document.querySelector(s).getBoundingClientRect().toJSON();
-        return {title:box('#album-detail-content > h1'),artist:box('.detail-artist'),play:box('#song-toggle-stop'),add:box('.song-add-playlist'),tabs:box('.song-view-tabs'),font:getComputedStyle(document.querySelector('#album-detail-content > h1')).fontSize};
+        return {title:box('#album-detail-content > h1'),artist:box('.detail-artist'),play:box('#song-toggle-stop'),add:box('.song-add-playlist'),tabs:box('.song-view-tabs'),heading:box('.song-view-heading'),firstTab:box('#song-tab-info'),font:getComputedStyle(document.querySelector('#album-detail-content > h1')).fontSize};
       });
       assert.ok(geometry.play.right+4<=geometry.add.left,'Playback and add button must not overlap');
       assert.ok(geometry.add.bottom<=geometry.tabs.top,'Actions precede tabs');
+      const gaps=[geometry.artist.top-geometry.title.bottom,geometry.heading.top-geometry.artist.bottom,geometry.tabs.top-geometry.heading.bottom];
+      assert.ok(Math.max(...gaps)-Math.min(...gaps)<1,`Equal detail row gaps: ${JSON.stringify(gaps)}`);
+      const icons=await page.evaluate(()=>[...document.querySelectorAll('.music-topnav svg')].filter(n=>{const b=n.getBoundingClientRect();return b.width&&b.height&&getComputedStyle(n.parentElement).opacity!=='0'&&!n.closest('.mini-playback-below')}).map(n=>{const b=n.getBoundingClientRect();return {id:n.closest('button')?.id||n.closest('button')?.dataset.action,center:b.top+b.height/2}}));
+      assert.ok(Math.max(...icons.map(n=>n.center))-Math.min(...icons.map(n=>n.center))<1,`Icon centers: ${JSON.stringify(icons)}`);
+      geometry.gaps=gaps;geometry.icons=icons;
       tabs.push(geometry);
       await page.screenshot({path:`${output}/detail-${viewport.width}-${tab}.png`});
     }
@@ -110,10 +116,24 @@ try {
   await page.locator('.music-back').click();await page.waitForTimeout(1000);
   await page.locator('.music-view-toggle').click();await page.waitForTimeout(1500);
   await page.screenshot({path:`${output}/overview.png`});
+  const openedAt=Date.now();
   await page.locator('[data-overview-playlist-open]').filter({hasText:'合成歌单'}).first().click();
   await page.locator('[aria-label="歌单歌曲列表"]').waitFor({state:'visible'});
   assert.ok((await page.locator('#album-detail-content > h1').textContent()).includes('合成歌单'));
+  report.overviewOpenMs=Date.now()-openedAt;
+  assert.ok(report.overviewOpenMs<1600,`Overview opens promptly: ${report.overviewOpenMs}ms`);
   await page.locator('[data-action="settings"]').first().click();
+  await page.locator('[data-category="appearance"]').click();
+  const follow=page.locator('#follow-system-theme');
+  await follow.check();assert.equal(await page.locator('[data-theme]:disabled').count(),2);
+  await follow.uncheck();assert.equal(await page.locator('[data-theme]:disabled').count(),0);
+  assert.equal(await page.locator('.theme-follow-system').evaluate(n=>getComputedStyle(n).borderBottomWidth),'0px');
+  const mask=page.locator('#page-text-mask');
+  assert.equal(await mask.isChecked(),true);
+  await mask.uncheck();
+  assert.equal(await page.locator('.music-app').evaluate(n=>n.classList.contains('no-text-masks')),true);
+  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('rhine-music-preferences')).pageTextMask),false);
+  await page.screenshot({path:`${output}/settings-appearance.png`});
   await page.locator('[data-category="developer"]').click();
   await page.locator('[data-action="replay-boot"]').click();
   await page.locator('.rhine-loading').waitFor({state:'visible'});
@@ -124,6 +144,15 @@ try {
   await page.locator('.music-boot-skip').click();
   await page.waitForFunction(()=>document.querySelector('.music-app').dataset.musicBoot==='done');
   report.manualFullOpening=true;
+  await page.locator('#netease-login-button').click();
+  await page.locator('[data-login-provider="qq"]').click();
+  await page.locator('[data-qq-login-method]').waitFor({state:'visible'});
+  assert.equal(await page.locator('[data-login-provider="qq"]').getAttribute('aria-selected'),'true');
+  await page.locator('[data-qq-login-method]').selectOption('wechat');
+  await page.screenshot({path:`${output}/qq-login.png`});
+  report.qqLoginEntry=true;
+  await page.locator('[data-action="close-panel"]').click();
+  report.performance=await page.evaluate(()=>({frame:JSON.parse(document.querySelector('#three-scene').dataset.frameTiming||'{}'),stats:window.rhineMusic.stats()}));
   assert.deepEqual(errors,[]);
   if(desktop) {
     const closePreference=await page.evaluate(()=>window.__TAURI__.core.invoke('desktop_close_preference'));
@@ -140,5 +169,5 @@ try {
   report.runtimeChecked=true;report.playlistEntrances=true;report.errors=errors;
   await fs.writeFile(`${output}/results.json`,JSON.stringify(report,null,2));
   console.log(JSON.stringify({passed:true,sizes:report.sizes.length,wheelFrames:frames.length,playlistEntrances:true}));
-} catch(error) {await page.screenshot({path:`${output}/failure.png`});console.error(errors);throw error;}
+} catch(error) {await page.screenshot({path:`${output}/failure.png`});console.error(errors);console.error(await page.evaluate(()=>({stage:document.querySelector('.music-app')?.dataset,stats:window.rhineMusic?.stats(),presentation:window.rhineMusic?.presentation?.phase})));throw error;}
 finally {await browser.close();await server?.close();child?.kill();}

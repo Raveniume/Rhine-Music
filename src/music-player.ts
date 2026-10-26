@@ -1,6 +1,6 @@
 import { musicPlatforms } from './music-platform.ts';
 import { fetchOnline, reportOnlineFailure } from './online-debug.ts';
-import { neteaseProvider } from './platform-provider.ts';
+import { neteaseProvider, PlatformProviderError } from './platform-provider.ts';
 import type { MusicTrack } from "./music-types";
 import { normalizeSongTransition, type SongTransitionMode } from "./music-song-transition.ts";
 import { AudioClockSuspended, BrowserGaplessPlayer } from "./music-browser-gapless.ts";
@@ -521,8 +521,8 @@ export class MusicPlayer {
       } catch (error) {
         if (request !== this.operation || this.disposed || controller.signal.aborted) return;
         await this.recoverOnline(track, request, recovery,
-          error instanceof OnlineSourceError ? error.message : `${musicPlatforms[track.onlineSource.provider]}音源请求失败或超时，请检查网络后重试。`,
-          !(error instanceof OnlineSourceError) || error.retryable);
+          (error instanceof OnlineSourceError || error instanceof PlatformProviderError) ? error.message : `${musicPlatforms[track.onlineSource.provider]}音源请求失败或超时，请检查网络后重试。`,
+          error instanceof PlatformProviderError ? (error.status !== undefined ? retryableOnlineStatus(error.status) : error.code === 'network') : !(error instanceof OnlineSourceError) || error.retryable);
         return;
       } finally { if (this.preparation === controller) this.preparation = undefined; }
     }

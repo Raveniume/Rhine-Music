@@ -13,7 +13,7 @@ const executable = path.resolve(process.env.RHINE_DESKTOP_EXE || 'release/Rhine-
 const executableDir = path.dirname(executable);
 const child = spawn(executable, [], { cwd: executableDir, windowsHide: true, stdio: 'ignore', env: {
   ...process.env,
-  WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
+  WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --mute-audio`,
   WEBVIEW2_USER_DATA_FOLDER: path.resolve(`artifacts/taskbar-lyrics-profile-${process.pid}`),
   RHINE_DESKTOP_DATA_DIR: path.resolve(`artifacts/taskbar-lyrics-data-${process.pid}`),
 } });
@@ -82,7 +82,20 @@ try {
   assert.equal(visible, true, 'taskbar lyric window becomes visible for active synthetic lyrics');
   assert.ok(size.width >= 260 && size.height >= 24, JSON.stringify(size));
   report.checks.push('Synthetic lyric reaches the separate taskbar WebView and shows its native window');
-  report.window = { visible, position, size, url: taskbarTarget.url };
+  report.window = { visible, position, size };
+  const layout = await taskbar.evaluate(`(() => { const root=document.querySelector('.taskbar-lyric'), text=document.querySelector('[data-current]');return {height:innerHeight,screenHeight:screen.height*devicePixelRatio,workHeight:screen.availHeight*devicePixelRatio,dpr:devicePixelRatio,font:parseFloat(getComputedStyle(document.querySelector('[data-current]')).fontSize),textBottom:text.getBoundingClientRect().bottom,rootBottom:root.getBoundingClientRect().bottom};})()`);
+  assert.ok(layout.height>=24 && layout.height<=48 && layout.textBottom<=layout.height && layout.rootBottom<=layout.height, JSON.stringify(layout));
+  assert.ok(layout.font>=18, JSON.stringify(layout));
+  assert.ok(position.y>=layout.workHeight && position.y+size.height<=layout.screenHeight+1,JSON.stringify({position,size,layout}));
+  report.layout=layout;
+  await main.evaluate(`window.__TAURI__.core.invoke('desktop_window_action',{action:'minimize'})`);
+  await sleep(1200);
+  assert.equal(await taskbar.evaluate(`window.__TAURI__.window.getCurrentWindow().isVisible()`),true,'Lyrics stay visible with main window minimized');
+  if (process.env.RHINE_TASKBAR_OBSERVE_MS) { console.log('Taskbar ready for native window switching'); await sleep(Math.min(60000,Number(process.env.RHINE_TASKBAR_OBSERVE_MS))); assert.equal(await taskbar.evaluate(`window.__TAURI__.window.getCurrentWindow().isVisible()`),true); }
+  const capture=await taskbar.command('Page.captureScreenshot',{format:'png'});
+  await fs.writeFile(path.resolve('artifacts/desktop-ui/taskbar-lyrics.png'),Buffer.from(capture.data,'base64'));
+  await main.evaluate(`window.__TAURI__.core.invoke('desktop_tray_action',{action:'show'})`);
+  report.checks.push('DPI-scaled content fits; lyrics survive minimizing during main-window switching');
 
   await main.evaluate(`window.dispatchEvent(new CustomEvent('rhine-lyric-state', { detail: {
     visible: false, current: '', next: '', title: '', artist: '', playing: false, instrumental: false

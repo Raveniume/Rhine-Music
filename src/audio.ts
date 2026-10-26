@@ -297,6 +297,7 @@ export class TerminalAudio {
   private startedAt = 0;
   private unlocked = false;
   private disposed = false;
+  private nativeHidden = false;
   private bootTime: number | null = null;
   private error = "";
   private requestId = 0;
@@ -331,9 +332,14 @@ export class TerminalAudio {
     this.suspension =
       this.context?.suspend().catch(() => {}) ?? Promise.resolve();
   };
+  setHidden(hidden: boolean) {
+    if (this.nativeHidden === hidden) return;
+    this.nativeHidden = hidden;
+    this.visibility();
+  }
   private visibility = () => {
     this.bootTime = null;
-    if (document.hidden) this.hide();
+    if ((document.hidden || this.nativeHidden)) this.hide();
     else if (this.unlocked) void this.activate();
   };
   configure(prefs: AudioPreferences) {
@@ -393,7 +399,7 @@ export class TerminalAudio {
   private async activate() {
     if (
       this.disposed ||
-      document.hidden ||
+      (document.hidden || this.nativeHidden) ||
       !this.unlocked ||
       (!this.prefs.sound && !this.prefs.music)
     )
@@ -402,9 +408,9 @@ export class TerminalAudio {
     try {
       const c = this.context ?? this.createContext();
       await this.suspension;
-      if (id !== this.requestId || this.disposed || document.hidden) return;
+      if (id !== this.requestId || this.disposed || (document.hidden || this.nativeHidden)) return;
       if (c.state === "suspended") await c.resume();
-      if (id !== this.requestId || document.hidden || this.disposed) return;
+      if (id !== this.requestId || (document.hidden || this.nativeHidden) || this.disposed) return;
       if (this.prefs.music) {
         await this.loadMusic(c);
         if (id === this.requestId) this.startMusic();
@@ -440,7 +446,7 @@ export class TerminalAudio {
       this.tracks.length ||
       !this.prefs.music ||
       this.disposed ||
-      document.hidden
+      (document.hidden || this.nativeHidden)
     )
       return;
     this.startedAt = c.currentTime + 0.04;
@@ -514,7 +520,7 @@ export class TerminalAudio {
       !this.prefs.sound ||
       !c ||
       c.state !== "running" ||
-      document.hidden ||
+      (document.hidden || this.nativeHidden) ||
       this.disposed
     )
       return;

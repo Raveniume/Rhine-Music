@@ -70,7 +70,7 @@ export class MusicSongView {
     indicator.style.transform = `translateX(${active.offsetLeft}px) scaleX(${active.offsetWidth})`;
   }
 
-  constructor(private mini: HTMLElement, private seek: (seconds: number) => void, private reduced: () => boolean = () => false, private onTab?: (tab: string) => void) {
+  constructor(private mini: HTMLElement, private seek: (seconds: number) => void, private reduced: () => boolean = () => false, private onTab?: (tab: string) => void, private maskEnabled: () => boolean = () => true) {
     window.addEventListener("rhine-desktop-visibility", this.onDesktopVisibility);
   }
 
@@ -79,7 +79,7 @@ export class MusicSongView {
     if (!track) return '';
     const togetherEnabled = track.onlineSource?.provider === 'netease';
     return `<section id="song-view" data-song="${esc(track.id)}" data-song-tab="lyrics" data-lyrics-active="true">
-      <div class="song-view-heading"><div class="song-primary-actions"><button type="button" data-action="song-toggle-stop" id="song-toggle-stop">${play}<span data-song-reveal>开始播放</span></button>${track.onlineSource ? '<button type="button" class="song-add-playlist" data-action="song-add-playlist" aria-label="添加到歌单"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16M4 12h16"/></svg><span>加入歌单</span></button>' : ''}</div><div class="song-step-buttons"><button type="button" data-action="playing-prev" aria-label="上一首">${previousArrow}<span data-song-reveal>上一首</span></button><button type="button" data-action="playing-next" aria-label="下一首"><span data-song-reveal>下一首</span>${nextArrow}</button></div></div>
+      <div class="song-view-heading"><div class="song-primary-actions"><button type="button" data-action="song-toggle-stop" id="song-toggle-stop">${play}<span data-song-reveal>开始播放</span></button>${track.onlineSource ? '<button type="button" class="song-add-playlist" data-action="song-add-playlist" aria-label="添加到歌单"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16M4 12h16"/></svg><span data-song-reveal>加入歌单</span></button>' : ''}</div><div class="song-step-buttons"><button type="button" data-action="playing-prev" aria-label="上一首">${previousArrow}<span data-song-reveal>上一首</span></button><button type="button" data-action="playing-next" aria-label="下一首"><span data-song-reveal>下一首</span>${nextArrow}</button></div></div>
       ${songViewTabsMarkup(togetherEnabled)}
       <section id="song-info" role="tabpanel" aria-labelledby="song-tab-info" hidden><dl id="song-facts"></dl><p id="song-description" data-song-reveal></p><p id="song-metadata-error" data-song-reveal role="status"></p></section>
       <section id="song-lyric-view" role="tabpanel" aria-labelledby="song-tab-lyrics"><div class="lyric-window"><div id="song-lyrics" role="region" aria-label="同步歌词" tabindex="0"></div></div>
@@ -181,8 +181,8 @@ export class MusicSongView {
       if (error.textContent !== errorText) { error.textContent = errorText; revealChanged = true; }
       const lyricContent = root.querySelector<HTMLElement>('#song-lyrics')!.dataset.content;
       if (showLyrics && detailActive && !root.closest('[hidden]')) this.paintLyrics(root.querySelector('#song-lyrics')!, info, selectedActive ? state.currentTime : 0, detailTrack);
-      if (revealChanged || enteringDetail || lyricContent !== root.querySelector<HTMLElement>('#song-lyrics')!.dataset.content || this.lastReduced !== this.reduced()) {
-        this.lastReduced = this.reduced();
+      if (revealChanged || enteringDetail || lyricContent !== root.querySelector<HTMLElement>('#song-lyrics')!.dataset.content || this.lastReduced !== (this.reduced() || !this.maskEnabled())) {
+        this.lastReduced = this.reduced() || !this.maskEnabled();
         // A detail-to-detail song switch replaces text while the surface is
         // already visible; page-entry masks would otherwise flash on every song.
         this.reveal.refresh(root, this.lastReduced, enteringDetail || viewChanged || !wasDetailActive);
