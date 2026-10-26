@@ -48,6 +48,8 @@ export class MusicSongView {
   private amllNode?: HTMLElement;
   private desktopLyricKey = '';
   private visible = false;
+  private miniVisible = false;
+  private miniAnimation?: Animation;
   private desktopHidden = false;
   private drag?: { input: HTMLInputElement; trackId: string };
   private reveal = new SongTextReveal();
@@ -124,6 +126,7 @@ export class MusicSongView {
   }
 
   setVisible(visible: boolean) {
+    if (visible === this.visible) return;
     if (visible && !this.visible) this.lyricKey = '';
     this.visible = visible;
     this.amll?.setVisible(visible && this.detailActive && this.tab === "lyrics");
@@ -189,7 +192,7 @@ export class MusicSongView {
       }
       if (detailTrack.onlineSource) this.ensure(detailTrack);
     }
-    this.mini.hidden = !active || detailActive;
+    this.setMiniVisible(active && !detailActive);
     this.mini.dataset.song = state.currentTrack?.id || '';
     if (active && state.currentTrack) {
       const track = state.currentTrack, cached = track.onlineSource ? this.cache.get(`${track.onlineSource.provider}:${track.onlineSource.id}`) : undefined;
@@ -240,6 +243,28 @@ export class MusicSongView {
       if (Number.isFinite(position)) this.seek(position);
     } else this.drag = undefined;
   }
+  private setMiniVisible(visible: boolean) {
+    if (visible === this.miniVisible) return;
+    this.miniVisible = visible;
+    const opacity = Number(getComputedStyle(this.mini).opacity);
+    this.miniAnimation?.cancel();
+    this.mini.inert = !visible;
+    this.mini.setAttribute('aria-hidden', String(!visible));
+    if (this.reduced()) { this.mini.hidden = !visible; return; }
+    const from = this.mini.hidden ? 0 : opacity;
+    this.mini.hidden = false;
+    const animation = this.mini.animate([
+      { opacity: from, transform: visible ? 'translateY(-3px)' : 'translateY(0)' },
+      { opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(-3px)' },
+    ], { duration: 140, easing: 'ease-out', fill: 'forwards' });
+    this.miniAnimation = animation;
+    animation.onfinish = () => {
+      if (this.miniAnimation !== animation) return;
+      this.mini.hidden = !this.miniVisible;
+      animation.cancel(); this.miniAnimation = undefined;
+    };
+  }
+
   cancelSeek() { this.drag = undefined; if (this.state) this.update(this.state, this.detailActive); }
 
   private paintInfo(root: HTMLElement, track: MusicTrack, cached?: CachedSong) {
@@ -418,5 +443,5 @@ export class MusicSongView {
     this.pending.clear(); this.cache.clear(); this.lyricKey = ''; this.paintedInfo = undefined; this.detailTrack = undefined;
     this.lyricEvents?.abort(); this.lyricEvents = undefined; this.lyricNode = undefined; this.manualLyricsUntil = 0;
   }
-  dispose() { this.disposed = true; window.removeEventListener("rhine-desktop-visibility", this.onDesktopVisibility); this.invalidate(); }
+  dispose() { this.miniAnimation?.cancel(); this.disposed = true; window.removeEventListener("rhine-desktop-visibility", this.onDesktopVisibility); this.invalidate(); }
 }

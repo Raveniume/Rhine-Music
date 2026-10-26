@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 
 const root = process.cwd();
@@ -88,10 +88,16 @@ try {
   assert.ok(layout.font>=18, JSON.stringify(layout));
   assert.ok(position.y>=layout.workHeight && position.y+size.height<=layout.screenHeight+1,JSON.stringify({position,size,layout}));
   report.layout=layout;
+  assert.ok(Math.abs(size.width/layout.dpr-400)<1,'Compact taskbar width is 400 logical pixels');
   await main.evaluate(`window.__TAURI__.core.invoke('desktop_window_action',{action:'minimize'})`);
   await sleep(1200);
   assert.equal(await taskbar.evaluate(`window.__TAURI__.window.getCurrentWindow().isVisible()`),true,'Lyrics stay visible with main window minimized');
   if (process.env.RHINE_TASKBAR_OBSERVE_MS) { console.log('Taskbar ready for native window switching'); await sleep(Math.min(60000,Number(process.env.RHINE_TASKBAR_OBSERVE_MS))); assert.equal(await taskbar.evaluate(`window.__TAURI__.window.getCurrentWindow().isVisible()`),true); }
+  const native=JSON.parse(execFileSync('powershell.exe',['-NoProfile','-File',path.resolve('scripts/check-native-surface.ps1')],{encoding:'utf8',windowsHide:true}));
+  assert.equal(native.lyricsUnoccluded,true,'Native hit-test must reach lyrics, not Explorer or another app');
+  assert.equal(native.lyricsNotForeground,true,'Lyrics must not steal focus');
+
+  report.native=native;
   const capture=await taskbar.command('Page.captureScreenshot',{format:'png'});
   await fs.writeFile(path.resolve('artifacts/desktop-ui/taskbar-lyrics.png'),Buffer.from(capture.data,'base64'));
   await main.evaluate(`window.__TAURI__.core.invoke('desktop_tray_action',{action:'show'})`);

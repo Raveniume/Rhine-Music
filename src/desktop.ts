@@ -14,6 +14,10 @@ export async function setCloseBehavior(value: CloseBehavior) {
   closeBehavior = value;
   if (isDesktop()) await invoke('desktop_set_close_preference', { behavior: value });
 }
+export async function configureTaskbarLyrics(enabled: boolean, restore = false) {
+  if (isDesktop()) await invoke('desktop_taskbar_lyric_control', { enabled, restore });
+}
+
 type WindowState = { fullscreen: boolean; maximized: boolean };
 let windowState: WindowState = { fullscreen: false, maximized: false };
 let preferredWindowMode: WindowDisplayMode = 'maximized';
@@ -25,9 +29,9 @@ function syncDisplayControls() {
   button?.setAttribute('title', label);
 }
 export function windowDisplayMarkup() {
-  return `<label class="settings-row"><span>中间窗口按钮的展开方式</span><select id="window-display-mode" aria-label="中间窗口按钮的展开方式">${([
+  return `<label class="settings-row"><span>窗口放大方式</span><select id="window-display-mode" aria-label="窗口放大方式">${([
     ['maximized', '最大化模式'], ['fullscreen', '全屏模式'],
-  ] as const).map(([value, label]) => `<option value="${value}" ${value === preferredWindowMode ? 'selected' : ''}>${label}</option>`).join('')}</select></label><p class="quality-note">点击右上角中间按钮时，最大化模式保留任务栏，全屏模式覆盖任务栏；再次点击还原窗口。</p>`;
+  ] as const).map(([value, label]) => `<option value="${value}" ${value === preferredWindowMode ? 'selected' : ''}>${label}</option>`).join('')}</select></label><p class="quality-note">最大化保留任务栏；全屏覆盖任务栏。</p>`;
 }
 export function setWindowDisplayMode(mode: WindowDisplayMode) {
   preferredWindowMode = normalizeWindowDisplayMode(mode);
@@ -86,6 +90,7 @@ export function mountDesktop() {
     <nav aria-label="窗口控制"><button data-window="minimize" aria-label="最小化">${icon('<path d="M1 6.5H11"/>')}</button><button data-window="maximize" aria-label="最大化">${maximizeIcon}</button><button data-window="close" aria-label="关闭">${icon('<path d="M1.5 1.5L10.5 10.5M10.5 1.5L1.5 10.5"/>')}</button></nav>`;
   document.body.prepend(bar);
   const syncWindowState = (state: WindowState) => {
+    const changed = state.fullscreen !== windowState.fullscreen || state.maximized !== windowState.maximized;
     windowState = state;
     document.documentElement.classList.toggle("desktop-maximized", state.maximized);
     document.documentElement.classList.toggle("desktop-fullscreen", state.fullscreen);
@@ -93,7 +98,7 @@ export function mountDesktop() {
     const maximize = bar.querySelector<HTMLButtonElement>('[data-window="maximize"]')!;
     const restore = state.maximized || state.fullscreen;
     maximize.innerHTML = restore ? restoreIcon : maximizeIcon;
-    window.dispatchEvent(new Event("resize"));
+    if (changed) window.dispatchEvent(new Event("resize"));
   };
   const act = async (action: string) => {
     try {

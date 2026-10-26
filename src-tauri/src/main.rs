@@ -333,7 +333,7 @@ fn main() {
                 | tauri_plugin_window_state::StateFlags::POSITION
                 | tauri_plugin_window_state::StateFlags::MAXIMIZED)
             .build())
-        .invoke_handler(tauri::generate_handler![desktop_window_action, desktop_request_close, desktop_window_state, desktop_close_preference, desktop_set_close_preference, desktop_close_decision, desktop_pick_folder, desktop_open_link, desktop_check_update, desktop_install_update, desktop_consume_first_launch, taskbar_lyric::update, taskbar_lyric::ready, taskbar_lyric::action, taskbar_lyric::tray_action])
+        .invoke_handler(tauri::generate_handler![desktop_window_action, desktop_request_close, desktop_window_state, desktop_close_preference, desktop_set_close_preference, desktop_close_decision, desktop_pick_folder, desktop_open_link, desktop_check_update, desktop_install_update, desktop_consume_first_launch, taskbar_lyric::update, taskbar_lyric::ready, taskbar_lyric::control, taskbar_lyric::action, taskbar_lyric::tray_action])
         .setup(|app| {
             let (service, url) = start_service(app.handle())?;
             app.manage(service);
@@ -347,6 +347,12 @@ fn main() {
                 .background_color(tauri::window::Color(232, 229, 225, 255))
                 .on_navigation(move |target| target.origin().ascii_serialization() == origin)
                 .build()?;
+            #[cfg(target_os = "windows")]
+            if let Ok(handle) = window.hwnd() {
+                use windows_sys::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_BORDER_COLOR};
+                let color: u32 = 0xfffffffe; // DWMWA_COLOR_NONE: no bright native frame.
+                unsafe { DwmSetWindowAttribute(handle.0 as _, DWMWA_BORDER_COLOR as u32, &color as *const _ as _, 4); }
+            }
             taskbar_lyric::setup_taskbar_window(app.handle(), &url).map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
             taskbar_lyric::setup_tray_controls(app.handle(), &url).map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
             // OS visibility explicitly suspends only rendering. Audio remains independent.
@@ -358,7 +364,8 @@ fn main() {
             let (notify, events) = std::sync::mpsc::sync_channel::<()>(1);
             std::thread::spawn(move || {
                 while events.recv().is_ok() {
-                    let Ok(hidden) = view.is_minimized() else { break; };
+                    let Ok(minimized) = view.is_minimized() else { break; };
+                    let hidden = minimized || !view.is_visible().unwrap_or(false);
                     let Ok(fullscreen) = view.is_fullscreen() else { break; };
                     let Ok(maximized) = view.is_maximized() else { break; };
                     if view.eval(&format!("window.dispatchEvent(new CustomEvent('rhine-desktop-visibility',{{detail:{{hidden:{hidden}}}}}));window.dispatchEvent(new CustomEvent('rhine-desktop-window-state',{{detail:{{fullscreen:{fullscreen},maximized:{maximized}}}}}));")).is_err() { break; }

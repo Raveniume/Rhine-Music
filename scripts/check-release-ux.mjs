@@ -38,14 +38,17 @@ page.on('pageerror',e=>errors.push(e.stack));
 await page.addInitScript(()=>{localStorage.setItem('rhine-music-preferences',JSON.stringify({startupOpening:true,reduced:false,sfx:false,theme:'night',quality:'performance'}));});
 const silence=Buffer.alloc(44+8000*2*180);silence.write('RIFF');silence.writeUInt32LE(silence.length-8,4);silence.write('WAVEfmt ',8);silence.writeUInt32LE(16,16);silence.writeUInt16LE(1,20);silence.writeUInt16LE(1,22);silence.writeUInt32LE(8000,24);silence.writeUInt32LE(16000,28);silence.writeUInt16LE(2,32);silence.writeUInt16LE(16,34);silence.write('data',36);silence.writeUInt32LE(silence.length-44,40);
 const tracks = Array.from({length:120},(_,i)=>({id:`netease-${1000+i}`,title:`合成曲目 ${String(i+1).padStart(3,'0')}`,artist:'测试歌手 / 合作歌手',albumId:`album-${i}`,duration:180,format:'在线音频',browserPlayable:true,onlineSource:{provider:'netease',id:String(1000+i),albumTitle:'合成专辑'}}));
+let releaseDelayed;
+const delayedPage = new Promise(resolve => { releaseDelayed=resolve; });
 await page.route('**/api/**',async route=>{
   const url=new URL(route.request().url()), p=url.pathname;
   if (p.endsWith('/auth/start')) { await route.fulfill({json:{id:'synthetic-qr',image:'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjgiIGhlaWdodD0iMTI4Ij48cmVjdCB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCIgc3R5bGU9ImZpbGw6d2hpdGUiLz48L3N2Zz4=',expiresAt:Date.now()+60000}}); return; }
+  if(p.includes('/456/') && p.endsWith('/tracks')) { await delayedPage; await route.fulfill({json:{tracks:tracks.slice(0,12),total:12}}).catch(()=>{});return; }
   if(p==='/api/fixture.wav'){await route.fulfill({contentType:'audio/wav',body:silence});return;}
   const json=p.includes('/prepare/')?{audioUrl:url.origin+'/api/fixture.wav',duration:180}:p==='/api/library'?{version:1,albums:[],genres:[],roots:[],scan:{running:false},onlineEnabled:true}:
     p==='/api/audio/capabilities'?{decoderAvailable:false,nativeAvailable:false,devices:[]}:
     p.endsWith('/auth/status')?{loggedIn:p.includes('/netease/'),profile:{nickname:'合成测试用户',userId:'12345'}}:
-    p.endsWith('/playlists')?{playlists:[{id:'123',name:'合成歌单 · 档案测试',trackCount:120,owned:true},{id:'456',name:'空歌单',trackCount:0,owned:true}],hasMore:false}:
+    p.endsWith('/playlists')?{playlists:[{id:'123',name:'合成歌单 · 档案测试',trackCount:120,owned:true},{id:'456',name:'延迟歌单',trackCount:12,owned:true}],hasMore:false}:
     p.endsWith('/tracks')?{tracks:p.includes('/456/')?[]:tracks.slice(Number(url.searchParams.get('offset')),Number(url.searchParams.get('offset'))+50),total:p.includes('/456/')?0:120}:
     p.includes('/together')?{session:'test',inRoom:false,active:false,queueIds:[],chat:{connected:false,messages:[]}}:
     p.endsWith('/info')?{track:tracks[0],album:{title:'合成专辑'},lyrics:{original:'[00:00.00]合成歌词第一行\n[00:03.00]合成歌词第二行'}}:
@@ -55,6 +58,8 @@ await page.route('**/api/**',async route=>{
 try {
   if(desktop)await page.reload();else await page.goto(server.resolvedUrls.local[0]);
   await page.locator('.music-app').waitFor();
+  if(desktop) await page.evaluate(()=>window.__TAURI__.core.invoke('desktop_tray_action',{action:'show'}));
+  await page.evaluate(()=>document.addEventListener('click',()=>{window.qaActionAt=performance.now();},true));
   await page.waitForFunction(()=>!document.querySelector('#music-loading'));
   await page.locator('.music-boot-skip').waitFor({state:'visible'});
   assert.equal(await page.locator('.rhine-loading').count(),0,'Daily startup skips the full loading film');
@@ -120,9 +125,79 @@ try {
   await page.locator('[data-overview-playlist-open]').filter({hasText:'合成歌单'}).first().click();
   await page.locator('[aria-label="歌单歌曲列表"]').waitFor({state:'visible'});
   assert.ok((await page.locator('#album-detail-content > h1').textContent()).includes('合成歌单'));
-  report.overviewOpenMs=Date.now()-openedAt;
+  report.overviewOpenMs=await page.evaluate(()=>performance.now()-window.qaActionAt);
   assert.ok(report.overviewOpenMs<1600,`Overview opens promptly: ${report.overviewOpenMs}ms`);
+  // Opening a playlist must keep the mini player visible, and the early header
+  // mask may finish once but must not restart when extraction settles.
+  assert.equal(await page.locator('#mini-playback-below').isVisible(),true);
+  const header = await page.locator('#album-detail-content > h1').elementHandle();
+  await page.waitForTimeout(1800);
+  assert.equal(await header.evaluate(n=>n.isConnected),true,'Metadata refresh retains the revealed header');
+  assert.equal(await page.locator('#album-detail-content > h1 .document-redaction-window').count(),0);
+  report.repeatedPlaylistOpen=[];
+  for(let cycle=0;cycle<3;cycle++) {
+    await page.locator('.music-back').click();await page.waitForTimeout(1300);
+    await page.locator('.music-view-toggle').click();await page.waitForTimeout(1100);
+    await page.evaluate(()=>{window.miniHiddenFrames=0;window.watchMini=true;const f=()=>{if(!window.watchMini)return;if(document.querySelector('#mini-playback-below').hidden)window.miniHiddenFrames++;requestAnimationFrame(f);};f();});
+    const at=Date.now();await page.locator('[data-overview-playlist-open]').filter({hasText:'合成歌单'}).first().click();
+    await page.locator('[aria-label="歌单歌曲列表"]').waitFor({state:'visible'});
+    const elapsed=await page.evaluate(()=>performance.now()-window.qaActionAt);assert.ok(elapsed<650,`Playlist entrance ${elapsed}ms`);
+    await page.waitForTimeout(1700);
+    assert.equal(await page.locator('#album-detail-content > h1 .document-redaction-window').count(),0);
+    assert.equal(await page.evaluate(()=>{window.watchMini=false;return window.miniHiddenFrames;}),0,'Mini lyrics stay continuous across archive/overview/playlist');
+    report.repeatedPlaylistOpen.push(elapsed);
+  }
+  await page.locator('.music-back').click();await page.waitForTimeout(1300);
+  await page.locator('.music-view-toggle').click();await page.waitForTimeout(1100);
+  const delayedAt=Date.now();
+  await page.locator('[data-overview-playlist-open]').filter({hasText:'延迟歌单'}).first().click();
+  await page.locator('[aria-label="歌单歌曲列表"]').waitFor({state:'visible'});
+  report.delayedPlaylistShellMs=await page.evaluate(()=>performance.now()-window.qaActionAt);
+  assert.ok(report.delayedPlaylistShellMs<650,'Playlist shell does not wait for the network');
+  const delayedHeader=await page.locator('#album-detail-content > h1').elementHandle();
+  assert.ok(await page.locator('#album-detail-content > h1 .document-redaction-window').count()>0,'Mask starts with initial zoom');
+  assert.equal(await page.locator('[data-playlist-detail-track]:disabled').count(),12);
+  await page.screenshot({path:`${output}/playlist-entering.png`});
+  await page.waitForTimeout(1600);
+  assert.equal(await page.locator('#album-detail-content > h1 .document-redaction-window').count(),0);
+  releaseDelayed();
+  await page.locator('[data-playlist-detail-track="0"]:enabled').waitFor();
+  await page.waitForTimeout(400);
+  assert.equal(await delayedHeader.evaluate(n=>n.isConnected),true);
+  assert.equal(await page.locator('#album-detail-content > h1 .document-redaction-window').count(),0,'Loaded tracks do not restart the mask');
+  assert.equal(await page.locator('[data-action^="playlist-detail-"]').count(),0,'Single-page playlists have no paging controls');
+  await page.screenshot({path:`${output}/playlist-loaded.png`});
+  report.delayedPlaylistMaskOnce=true;
   await page.locator('[data-action="settings"]').first().click();
+  const categories=await page.locator('[data-category]').evaluateAll(ns=>ns.map(n=>n.dataset.category));
+  report.settingsCategories=categories;
+  for(const category of categories) {
+    await page.locator(`[data-category="${category}"]`).click();
+    assert.equal(await page.locator('.settings-page:visible').count(),1);
+    assert.ok(await page.locator(`.settings-page[data-settings-page="${category}"] .panel-section`).count()>0);
+    await page.screenshot({path:`${output}/settings-${category}.png`});
+  }
+  if(desktop) {
+    await page.locator('[data-category="desktop"]').click();
+    await page.locator('#taskbar-lyrics-enabled').uncheck();
+    const lyric=browser.contexts()[0].pages().find(p=>p.url().includes('taskbar=1'));
+    assert.ok(lyric);
+    await page.waitForTimeout(600);
+    assert.equal(await lyric.evaluate(()=>window.__TAURI__.window.getCurrentWindow().isVisible()),false);
+    await page.locator('[data-action="restore-taskbar-lyrics"]').click();
+    await page.waitForTimeout(600);
+    assert.equal(await lyric.evaluate(()=>window.__TAURI__.window.getCurrentWindow().isVisible()),true);
+    assert.equal(await page.locator('#taskbar-lyrics-enabled').isChecked(),true);
+    await page.evaluate(()=>window.__TAURI__.core.invoke('desktop_tray_action',{action:'controls'}));
+    const tray=browser.contexts()[0].pages().find(p=>p.url().includes('tray=1'));
+    await page.waitForTimeout(800);
+    const bounds=await tray.evaluate(async()=>({position:await window.__TAURI__.window.getCurrentWindow().outerPosition(),size:await window.__TAURI__.window.getCurrentWindow().outerSize(),screen:{w:screen.width*devicePixelRatio,h:screen.availHeight*devicePixelRatio},title:document.querySelector('[data-title]').textContent}));
+    assert.ok(bounds.position.x>0 && bounds.position.y>0,JSON.stringify(bounds));
+    assert.ok(bounds.position.x+bounds.size.width<=bounds.screen.w+1 && bounds.position.y+bounds.size.height<=bounds.screen.h+1,JSON.stringify(bounds));
+    assert.match(bounds.title,/合成曲目/);report.trayPopup=bounds;
+    await tray.screenshot({path:`${output}/tray-controls.png`});
+    await tray.evaluate(()=>window.__TAURI__.core.invoke('desktop_tray_action',{action:'hide'}));
+  }
   await page.locator('[data-category="appearance"]').click();
   const follow=page.locator('#follow-system-theme');
   await follow.check();assert.equal(await page.locator('[data-theme]:disabled').count(),2);
@@ -134,7 +209,7 @@ try {
   assert.equal(await page.locator('.music-app').evaluate(n=>n.classList.contains('no-text-masks')),true);
   assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('rhine-music-preferences')).pageTextMask),false);
   await page.screenshot({path:`${output}/settings-appearance.png`});
-  await page.locator('[data-category="developer"]').click();
+  await page.locator('[data-category="appearance"]').click();
   await page.locator('[data-action="replay-boot"]').click();
   await page.locator('.rhine-loading').waitFor({state:'visible'});
   await page.waitForFunction(()=>Number(document.querySelector('.rhine-loading .opening-stage')?.dataset.bootFrame)>=330);
@@ -170,4 +245,4 @@ try {
   await fs.writeFile(`${output}/results.json`,JSON.stringify(report,null,2));
   console.log(JSON.stringify({passed:true,sizes:report.sizes.length,wheelFrames:frames.length,playlistEntrances:true}));
 } catch(error) {await page.screenshot({path:`${output}/failure.png`});console.error(errors);console.error(await page.evaluate(()=>({stage:document.querySelector('.music-app')?.dataset,stats:window.rhineMusic?.stats(),presentation:window.rhineMusic?.presentation?.phase})));throw error;}
-finally {await browser.close();await server?.close();child?.kill();}
+finally {releaseDelayed();await browser.close();await server?.close();child?.kill();}

@@ -11,7 +11,7 @@ export const normalizeVisualizer = (value: Partial<VisualizerOptions>): Visualiz
   ...(typeof value.color === 'string' && /^#[\da-f]{6}$/i.test(value.color) ? {color: value.color.toLowerCase()} : {}),
 });
 export function visualizerMarkup(options: VisualizerOptions) {
-  return `<section class="panel-section" data-settings-group="appearance"><h3>音浪</h3>
+  return `<section class="panel-section" data-settings-group="lyrics"><h3>音浪</h3>
     <label class="settings-row"><span>启用音浪</span><input id="visualizer-enabled" type="checkbox" ${options.enabled ? 'checked' : ''}></label>
     <label class="settings-row"><span>位置</span><select id="visualizer-position" aria-label="音浪位置"><option value="progress" ${options.position === 'progress' ? 'selected' : ''}>进度条上方</option><option value="bottom" ${options.position === 'bottom' ? 'selected' : ''}>窗口底边</option></select></label>
     <label class="settings-row"><span>样式</span><select id="visualizer-style" aria-label="音浪样式">${([['bars','细柱频谱'],['dots','点阵频谱'],['mini','极简五柱'],['outline','流动波形']] as const).map(([id,label])=>`<option value="${id}" ${options.style===id?'selected':''}>${label}</option>`).join('')}</select></label>

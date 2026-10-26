@@ -18,7 +18,7 @@ import './online-debug.css';
 import { fetchOnline, mountOnlineDebug, onlineErrorReport } from './online-debug';
 import { settingsCategories, settingsNavigation, groupSettingsContent, selectSettingsCategory, type SettingsCategory } from './music-settings';
 import { aboutMarkup, checkForUpdates } from './music-about';
-import { consumeFirstLaunch, getCloseBehavior, isDesktop, setCloseBehavior, windowDisplayMarkup, setWindowDisplayMode, normalizeWindowDisplayMode, type CloseBehavior, type WindowDisplayMode } from './desktop';
+import { configureTaskbarLyrics, consumeFirstLaunch, getCloseBehavior, isDesktop, setCloseBehavior, windowDisplayMarkup, setWindowDisplayMode, normalizeWindowDisplayMode, type CloseBehavior, type WindowDisplayMode } from './desktop';
 import { version as appVersion } from "../package.json";
 import { MusicOverviewUI } from "./music-overview-ui";
 import { KeyboardPlaybackNavigation } from './music-keyboard-playback';
@@ -163,6 +163,7 @@ const preferences = {
     reduced: false,
     startupOpening: true,
     pageTextMask: true,
+    taskbarLyrics: true,
     volume: 0.65,
     playbackMode: "sequential" as PlaybackMode,
     // Leave unset until legacy preferences have been read; a default here
@@ -203,6 +204,7 @@ const preferences = {
       reduced: boolean;
       startupOpening: boolean;
       pageTextMask: boolean;
+      taskbarLyrics: boolean;
       volume: number;
       playbackMode: PlaybackMode;
       songTransition: SongTransitionMode;
@@ -235,6 +237,8 @@ delete preferences.lyricAreaHeight;
 preferences.keyboardSyncPlayback = preferences.keyboardSyncPlayback === true;
 preferences.startupOpening = preferences.startupOpening !== false;
 preferences.pageTextMask = preferences.pageTextMask !== false;
+preferences.taskbarLyrics = preferences.taskbarLyrics !== false;
+void configureTaskbarLyrics(preferences.taskbarLyrics);
 preferences.keybindings = normalizeKeybindings(preferences.keybindings);
 preferences.frameLimit = normalizeFrameLimit(preferences.frameLimit);
 preferences.visualizer = normalizeVisualizer(preferences.visualizer ?? {});
@@ -554,6 +558,7 @@ const documentDecryption = new DocumentDecryption(
   "h1, .detail-overline > span, .detail-artist, .album-facts small, .album-facts span, .track-name strong, .album-about p",
   0.35,
 );
+const playlistDecryption = new DocumentDecryption("h1, .detail-overline > span, .detail-artist", 0);
 const tabTransition = new ContentTransition();
 const detailTransition = new SurfaceTransition(
   $("#music-detail"),
@@ -582,6 +587,7 @@ let playlistDetailEpoch = 0;
 async function openPlaylistDetail(row: number, offset = 0) {
   const playlist = playlistLibrary.playlists[row];
   if (!playlist || !accountActive) return;
+  const samePlaylist = playlistDetail?.row === row && !overview && presentation.openingOrDetail;
   const epoch = ++playlistDetailEpoch, key = accountKey;
   if (overview) setOverview(false, false);
   playlistDetail = { row, offset, loading: true, error: '' };
@@ -589,17 +595,20 @@ async function openPlaylistDetail(row: number, offset = 0) {
   // fetch continue in parallel, so the detail surface never waits on camera
   // settling before showing useful content.
   renderDetail();
-  const navigation = navigatePlaylist(row, offset);
+  const navigation = samePlaylist ? Promise.resolve() : navigatePlaylist(row, offset);
   if (!presentation.openingOrDetail) presentation.open();
   // The playlist is a readable list while the shelf camera is still moving.
   // Do not make opening it depend on the physical cover's readiness gate.
-  detailTransition.show(preferences.reduced);
+  if (!samePlaylist) {
+    detailTransition.show(preferences.reduced);
+    playlistDecryption.reset($("#album-detail-content"), preferences.reduced || !preferences.pageTextMask);
+  }
   $('#music-detail').inert = !!panel;
   $('#music-detail').setAttribute('aria-hidden', 'false');
   $('#album-detail-content').inert = false;
   try { await playlistLibrary.ensure(row, offset, true); }
   catch (error) { if (epoch === playlistDetailEpoch && playlistDetail) playlistDetail.error = (error as Error).message; }
-  await navigation;
+  void navigation;
   if (epoch !== playlistDetailEpoch || key !== accountKey || !playlistDetail) return;
   playlistDetail.loading = false;
   renderDetail();
@@ -609,14 +618,23 @@ function renderPlaylistDetail() {
   const playlist = playlistLibrary.playlists[detail.row];
   if (!playlist) return;
   songView.setVisible(false);
-  const previousScroll = detailIdentity === `playlist:${playlist.id}` ? $('#album-detail-content').scrollTop : 0;
+  const content = $('#album-detail-content');
+  const samePlaylist = detailIdentity === `playlist:${playlist.id}` && !!content.querySelector('.playlist-detail-tools');
+  const samePage = samePlaylist && content.dataset.playlistOffset === String(detail.offset);
+  const previousScroll = samePage ? content.scrollTop : 0;
   detailIdentity = `playlist:${playlist.id}`;
   const tracks = Array.from({ length: Math.min(50, Math.max(0, playlist.trackCount - detail.offset)) }, (_, index) => {
     const position = detail.offset + index, track = playlistLibrary.track(detail.row, position);
     return `<button class="track-row" data-playlist-detail-track="${position}" ${!track ? 'disabled' : ''}><span class="track-number">${String(position + 1).padStart(2, '0')}</span><span class="track-name"><strong>${esc(track?.title || (detail.loading ? '正在读取…' : '歌曲不可用'))}</strong><small>${esc(track?.artist || '')}</small></span><span class="track-duration">${track ? time(track.duration) : ''}</span></button>`;
   }).join('');
-  $('#album-detail-content').innerHTML = `<div class="detail-overline"><span>PLAYLIST ${String(detail.row + 1).padStart(3, '0')}</span><span>${esc(musicPlatforms[activeProvider])}</span></div><h1>${esc(playlist.name)}</h1><p class="detail-artist">${playlist.trackCount} 首歌曲 · ${playlist.owned ? '创建的歌单' : '收藏的歌单'}</p><div class="playlist-detail-tools"><strong>歌单曲目</strong><button class="text-button" data-action="playlist-detail-prev" ${detail.offset === 0 ? 'disabled' : ''}>上一页</button><span>${Math.floor(detail.offset / 50) + 1} / ${Math.max(1, Math.ceil(playlist.trackCount / 50))}</span><button class="text-button" data-action="playlist-detail-next" ${detail.offset + 50 >= playlist.trackCount ? 'disabled' : ''}>下一页</button></div><p role="status">${esc(detail.error)}</p><div class="track-list" aria-label="歌单歌曲列表">${tracks || '<p>这个歌单还没有歌曲。</p>'}</div>`;
-  $('#album-detail-content').scrollTop = previousScroll;
+  if (!samePlaylist) {
+    content.innerHTML = `<div class="detail-overline"><span>PLAYLIST ${String(detail.row + 1).padStart(3, '0')}</span><span>${esc(musicPlatforms[activeProvider])}</span></div><h1>${esc(playlist.name)}</h1><p class="detail-artist">${playlist.trackCount} 首歌曲 · ${playlist.owned ? '创建的歌单' : '收藏的歌单'}</p><div class="playlist-detail-tools"></div><p role="status"></p><div class="track-list" aria-label="歌单歌曲列表"></div>`;
+  }
+  content.dataset.playlistOffset = String(detail.offset);
+  content.querySelector('.playlist-detail-tools')!.innerHTML = `<strong>歌单曲目</strong>${playlist.trackCount > 50 ? `<button class="text-button" data-action="playlist-detail-prev" ${detail.offset === 0 ? 'disabled' : ''}>上一页</button><span>${Math.floor(detail.offset / 50) + 1} / ${Math.ceil(playlist.trackCount / 50)}</span><button class="text-button" data-action="playlist-detail-next" ${detail.offset + 50 >= playlist.trackCount ? 'disabled' : ''}>下一页</button>` : ''}`;
+  content.querySelector('[role="status"]')!.textContent = detail.error;
+  content.querySelector('.track-list')!.innerHTML = tracks || '<p>这个歌单还没有歌曲。</p>';
+  content.scrollTop = previousScroll;
 }
 const trackFocus = new MusicTrackFocus();
 let pendingTrackReveal: { albumId: string; trackId: string } | undefined;
@@ -640,7 +658,7 @@ const presentation = new MusicPresentation({
   // final readiness gate still controls inspection and camera completion, but
   // the user gets immediate structural feedback during the remaining settle.
   presentationReady: () => Boolean(playlistDetail || (scene && (scene.musicPresentationReady || scene.musicPresentationPreviewReady))),
-  archiveReady: () => !!scene?.musicArchiveReady && (!!playlistDetail || scene.musicOverviewProgress < .02),
+  archiveReady: () => !!playlistDetail || (!!scene?.musicArchiveReady && scene.musicOverviewProgress < .02),
   archiveInteractive: () => scene?.musicArchiveInteractive ?? false,
   enterCamera: () => {
     scene?.setMode("detail");
@@ -682,7 +700,7 @@ const presentation = new MusicPresentation({
     detail.setAttribute("aria-hidden", "false");
     content.inert = false;
     content.scrollTop = 0;
-    documentDecryption.reset(content, preferences.reduced || !preferences.pageTextMask);
+    if (!playlistDetail) documentDecryption.reset(content, preferences.reduced || !preferences.pageTextMask);
     pendingDetailFocus = true;
   },
   hideMenu: (done) => {
@@ -697,7 +715,7 @@ const presentation = new MusicPresentation({
   hideBrowse: (done) => {
     $("#music-browse").inert = true;
     $("#music-browse").setAttribute("aria-hidden", "true");
-    browseTransition.hide(preferences.reduced, done);
+    browseTransition.hide(preferences.reduced || !!playlistDetail, done);
   },
   showBrowse: showBrowseSurface,
 });
@@ -1502,7 +1520,7 @@ function renderDetail() {
 }
 function updateSongTransport() {
   updateQueueControls();
-  songView.update(playerState, mode === 'detail');
+  songView.update(playerState, mode === 'detail' && !playlistDetail && !!document.querySelector('#song-view'));
   visualizer.refresh();
 }
 document.addEventListener('pointercancel', () => songView.cancelSeek());
@@ -1828,7 +1846,7 @@ function rebuildPlaylistGrid() {
     const previousId = currentAlbum()?.id;
     const next = playlistLibrary.albums();
     if (next === albums && stage.classList.contains('playlist-grid')) { updateStatus(); return; }
-    const preserveSurface = stage.classList.contains('playlist-grid') && (next.some(album => album.id === previousId) || !!currentAlbum()?.playback?.queueShelf);
+    const preserveSurface = !!playlistDetail || stage.classList.contains('playlist-grid') && (next.some(album => album.id === previousId) || !!currentAlbum()?.playback?.queueShelf);
     if (!preserveSurface) { cancelTrackReveal(); presentation.reset(); detailTransition.hide(true); browseTransition.hide(true); }
     albums = next; genres = []; selected = Math.max(0, next.findIndex(album => album.id === previousId));
     setPlaylistAlbums(albums, playlistLibrary.playlists.map(playlist => playlist.name));
@@ -1884,7 +1902,7 @@ async function navigatePlaylist(row: number, song: number, navigation?: ArchiveN
   playlistNavigationTarget = { row, song: position, cell };
   updateStatus();
   const cachedIndex = records.findIndex(record => record.album?.playlistCell?.playlistId === playlist.id && record.album.playlistCell.songIndex === position);
-  if (cachedIndex >= 0 && (records[cachedIndex].album?.tracks.length || !playlist.trackCount)) {
+  if (cachedIndex >= 0 && (playlistDetail?.row === row || records[cachedIndex].album?.tracks.length || !playlist.trackCount)) {
     // Start the existing motion immediately; metadata and cover decoding stay asynchronous.
     select(cachedIndex, { cell }, presentation.openingOrDetail);
     playlistNavigationTarget = undefined; updateStatus();
@@ -2223,7 +2241,7 @@ const together = new ListenTogether(stage, player, notify, async (track, queue) 
 });
 const songView = new MusicSongView($('#mini-playback-below'), seconds => player.seek(seconds), () => preferences.reduced, tab => together.show(tab === 'together'), () => preferences.pageTextMask);
 const visualizer = new MusicVisualizer(stage, target => player.readSpectrum(target), () => ({
-  state: playerState, detail: mode === 'detail', blocked: !!panel || !!viewer?.isOpen, reduced: preferences.reduced, sampleRate: player.spectrumSampleRate,
+  state: playerState, detail: mode === 'detail' && !playlistDetail && !!document.querySelector('#song-view'), blocked: !!panel || !!viewer?.isOpen, reduced: preferences.reduced, sampleRate: player.spectrumSampleRate,
 }));
 visualizer.configure(preferences.visualizer!);
 player.setSpectrumEnabled(preferences.visualizer!.enabled, true);
@@ -2430,7 +2448,7 @@ function renderMusicBrainzSettings() {
         onlineEnabled?: boolean;
       }>("/api/config");
       if (!configSection.isConnected) return;
-      configSection.innerHTML = `<h3>资料库连接</h3><label class="field-label" for="metadata-contact">MusicBrainz 联系邮箱或项目网址</label><input id="metadata-contact" type="text" value="${esc(config.musicBrainzContact || "")}" placeholder="你的联系邮箱或公开项目网址"><label class="settings-row"><span>扫描后自动补充新专辑资料</span><input type="checkbox" id="online-enabled" ${config.onlineEnabled ? "checked" : ""}></label><button class="text-button" data-action="save-online">保存资料库设置 ↗</button><p>${config.musicBrainzConfigured ? "资料库请求标识已配置。" : "尚未配置；本地曲库和播放已可使用。"}</p>`;
+      configSection.innerHTML = `<h3>资料库连接</h3><label class="field-label" for="metadata-contact">MusicBrainz 联系邮箱或项目网址</label><input id="metadata-contact" type="text" value="${esc(config.musicBrainzContact || "")}" placeholder="你的联系邮箱或公开项目网址"><label class="settings-row"><span>扫描后自动补充新专辑资料</span><input type="checkbox" id="online-enabled" ${config.onlineEnabled ? "checked" : ""}></label><button class="text-button" data-action="save-online">保存资料库设置 ↗</button><p>${config.musicBrainzConfigured ? "已配置。" : "未配置。"}</p>`;
     } catch (error) {
       if (configSection.isConnected)
         configSection.innerHTML = `<p>${esc((error as Error).message)}</p>`;
@@ -2489,26 +2507,27 @@ function renderSettingsPanel() {
   lyricSettingsPreview.stop();
   $("#panel-body").innerHTML =
     `<section class="panel-section" data-settings-group="appearance"><h3>外观主题</h3><label class="settings-row theme-follow-system"><span>跟随系统</span><input type="checkbox" id="follow-system-theme" ${preferences.followSystemTheme ? "checked" : ""}></label><div class="theme-cards" aria-disabled="${preferences.followSystemTheme}">${(["day", "night"] as Theme[]).map((t) => `<button data-theme="${t}" aria-pressed="${preferences.theme === t}" ${preferences.followSystemTheme ? 'disabled' : ''} class="${t}"><i></i><strong>${themeNames[t]}</strong><span>${t === "day" ? "浅色背景" : "深色背景"}</span></button>`).join("")}</div></section>
-    <section class="panel-section" data-settings-group="appearance"><h3>启动体验</h3><label class="settings-row"><span>启动时展示元素滚动</span><input type="checkbox" id="startup-opening" aria-label="启动时展示元素滚动" ${preferences.startupOpening ? "checked" : ""}></label><p class="quality-note">开启后，启动时播放档案架滚动动画。安装后首次打开会播放完整开场，也可在开发者设置中重播。</p></section>
-    <section class="panel-section" data-settings-group="appearance"><h3>关闭行为</h3><label class="settings-row"><span>点击关闭按钮时</span><select id="close-behavior" aria-label="点击关闭按钮时"><option value="ask" ${preferences.closeBehavior === 'ask' ? 'selected' : ''}>每次询问</option><option value="tray" ${preferences.closeBehavior === 'tray' ? 'selected' : ''}>最小化到托盘</option><option value="exit" ${preferences.closeBehavior === 'exit' ? 'selected' : ''}>彻底退出</option></select></label><p class="quality-note">托盘模式会继续播放音乐，并保留任务栏歌词与播放控制。</p></section>
+    <section class="panel-section" data-settings-group="appearance"><h3>启动体验</h3><label class="settings-row"><span>启动时展示元素滚动</span><input type="checkbox" id="startup-opening" aria-label="启动时展示元素滚动" ${preferences.startupOpening ? "checked" : ""}></label><p class="quality-note">安装后首次打开播放完整开场。</p><button class="text-button" data-action="replay-boot">观看完整启动动画 ↗</button></section>
+    <section class="panel-section" data-settings-group="desktop"><h3>关闭行为</h3><label class="settings-row"><span>点击关闭按钮时</span><select id="close-behavior" aria-label="点击关闭按钮时"><option value="ask" ${preferences.closeBehavior === 'ask' ? 'selected' : ''}>每次询问</option><option value="tray" ${preferences.closeBehavior === 'tray' ? 'selected' : ''}>最小化到托盘</option><option value="exit" ${preferences.closeBehavior === 'exit' ? 'selected' : ''}>彻底退出</option></select></label><p class="quality-note">最小化到托盘后继续播放音乐。</p></section>
     ${visualizerMarkup(preferences.visualizer!)}
-    <section class="panel-section" data-settings-group="appearance"><h3>歌词显示</h3><label class="settings-row"><span>歌词区域高度 <output id="lyric-area-size-value">${preferences.lyricAreaSize}%</output></span><input type="range" id="lyric-area-size" aria-label="歌词区域高度" min="40" max="100" step="5" value="${preferences.lyricAreaSize}"></label><p class="quality-note">窗口较小时会保留最低阅读高度，保证歌词和进度条可见。</p></section>
-    <section class="panel-section" data-settings-group="appearance"><h3>键盘操作</h3><label class="settings-row"><span>导航按键切换时同步播放</span><input type="checkbox" id="keyboard-sync-playback" aria-label="方向键切换时同步播放" ${preferences.keyboardSyncPlayback ? "checked" : ""}></label>${keybindingsMarkup(preferences.keybindings)}</section>
+    <section class="panel-section" data-settings-group="lyrics"><h3>歌词显示</h3><label class="settings-row"><span>歌词区域高度 <output id="lyric-area-size-value">${preferences.lyricAreaSize}%</output></span><input type="range" id="lyric-area-size" aria-label="歌词区域高度" min="40" max="100" step="5" value="${preferences.lyricAreaSize}"></label><p class="quality-note">调整歌曲详情页的歌词高度。</p></section>
+    <section class="panel-section" data-settings-group="shortcuts"><h3>键盘操作</h3><label class="settings-row"><span>切换歌曲时自动播放</span><input type="checkbox" id="keyboard-sync-playback" aria-label="方向键切换时同步播放" ${preferences.keyboardSyncPlayback ? "checked" : ""}></label>${keybindingsMarkup(preferences.keybindings)}</section>
     <section class="panel-section" data-settings-group="local"><h3>音乐库排列</h3><label class="settings-row"><span>排列方式</span><select id="music-sort" aria-label="音乐库排列方式">${(["genre", "artist", "album"] as MusicSortMode[]).map((value) => `<option value="${value}" ${preferences.sortMode === value ? "selected" : ""}>${sortLabels[value].name}</option>`).join("")}</select></label></section>
     <section class="panel-section" id="introduction-settings" data-settings-group="local"><h3>专辑介绍</h3><p id="introduction-coverage"></p><button class="primary-button" id="introduction-refresh" data-action="introductions-library">查询 / 更新专辑介绍 ↗</button><progress id="introduction-progress" aria-label="专辑介绍查询进度" max="1" value="0" hidden></progress><p id="introduction-status" class="scan-status" role="status" aria-live="polite"></p><details id="introduction-missing" hidden><summary></summary><ul></ul></details></section>
     <section class="panel-section" id="credits-settings" data-settings-group="local"><h3>制作信息</h3><p id="credits-coverage"></p><button class="primary-button" id="credits-refresh" data-action="credits-library">查询缺失的制作信息 ↗</button><progress id="credits-progress" aria-label="制作信息查询进度" max="1" value="0" hidden></progress><p id="credits-status" class="scan-status" role="status" aria-live="polite"></p></section>
-    <section class="panel-section" data-settings-group="local"><h3>高级设置 · 专辑阵列</h3><label class="settings-row"><span>专辑列显示</span><select id="music-array-mode" aria-label="专辑列显示方式"><option value="filled" ${preferences.arrayMode === "filled" ? "selected" : ""}>填充画面</option><option value="realistic" ${preferences.arrayMode === "realistic" ? "selected" : ""}>真实专辑列</option></select></label><label class="settings-row"><span>保留每列浏览位置</span><input type="checkbox" id="remember-column-position" ${preferences.rememberColumnPosition ? "checked" : ""}></label></section>
-    <section class="panel-section" data-settings-group="display"><h3>模型排列</h3><label class="settings-row"><span>模型循环</span><input type="checkbox" id="model-looping" aria-label="模型循环" ${preferences.modelLooping ? "checked" : ""}></label><p class="quality-note">开启后循环展示模型；关闭后按实际数量展示，浏览到首尾停止。歌曲播放顺序由播放模式控制。</p></section>
-    <section class="settings-audio" data-settings-group="local">${audioOutputMarkup()}</section>
+    <section class="panel-section" data-settings-group="appearance"><h3>档案架排列</h3><label class="settings-row"><span>专辑列显示</span><select id="music-array-mode" aria-label="专辑列显示方式"><option value="filled" ${preferences.arrayMode === "filled" ? "selected" : ""}>填充画面</option><option value="realistic" ${preferences.arrayMode === "realistic" ? "selected" : ""}>真实专辑列</option></select></label><label class="settings-row"><span>保留每列浏览位置</span><input type="checkbox" id="remember-column-position" ${preferences.rememberColumnPosition ? "checked" : ""}></label></section>
+    <section class="panel-section" data-settings-group="appearance"><h3>档案架循环</h3><label class="settings-row"><span>循环浏览</span><input type="checkbox" id="model-looping" aria-label="循环浏览" ${preferences.modelLooping ? "checked" : ""}></label><p class="quality-note">关闭后，浏览到首尾停止。</p></section>
+    <section class="settings-audio" data-settings-group="playback">${audioOutputMarkup()}</section>
     <section class="panel-section" data-settings-group="display"><h3>渲染画质</h3><label class="quality-control"><span>画质选择</span><select id="quality-mode"><option value="auto" ${preferences.qualityMode === 'auto' ? 'selected' : ''}>自动适配</option><option value="manual" ${preferences.qualityMode === 'manual' ? 'selected' : ''}>手动设置</option></select></label>
     <p class="quality-note">当前渲染显卡：${esc(scene?.graphicsIdentity.renderer || '尚未初始化')}</p>
     ${qualityMarkup(renderQuality)}</section>
-    <section class="panel-section" data-settings-group="display"><h3>帧率</h3><label class="settings-row"><span>帧率上限</span><select id="frame-limit" aria-label="帧率上限">${FRAME_LIMITS.map(value => `<option value="${value}" ${preferences.frameLimit === value ? 'selected' : ''}>${value ? `${value} FPS` : '不限制'}</option>`).join('')}</select></label><p class="quality-note">实际帧率取决于显卡性能及屏幕刷新率。不限制时跟随屏幕刷新；后台窗口仍会暂停三维绘制。</p></section>
-    <section class="panel-section" data-settings-group="display"><h3>玻璃遮挡优化</h3><label class="settings-row"><span>可见区域绘制</span><select id="glass-occlusion" aria-label="玻璃遮挡优化"><option value="on" ${glassOcclusionMode === "on" ? "selected" : ""}>开启遮挡优化</option><option value="off" ${glassOcclusionMode === "off" ? "selected" : ""}>关闭 · Perf6 对照</option><option value="debug" ${glassOcclusionMode === "debug" ? "selected" : ""}>三类区域调试</option></select></label><button class="text-button" data-action="copy-performance">复制性能诊断 ↗</button></section>
-    <section class="panel-section" data-settings-group="developer"><h3>在线错误调试</h3><label class="settings-row"><span>显示详细报错</span><input type="checkbox" id="online-error-display" ${preferences.onlineErrorDisplay ? "checked" : ""}></label><button class="text-button" data-action="show-online-errors" ${preferences.onlineErrorDisplay ? "" : "disabled"}>查看 / 复制报错</button><button class="text-button" data-action="copy-performance">复制性能诊断 ↗</button></section>
-    <section class="panel-section" data-settings-group="appearance"><h3>动效与显示</h3><label class="settings-row"><span>页面文字遮罩动画</span><input type="checkbox" id="page-text-mask" ${preferences.pageTextMask ? "checked" : ""}></label><p class="quality-note">进入页面时用色块揭示文字。关闭后直接显示文字。</p><label class="settings-row"><span>减少动态效果</span><input type="checkbox" id="reduced-motion" ${preferences.reduced ? "checked" : ""}></label></section><section class="panel-section" data-settings-group="display"><h3>窗口与全屏</h3>${windowDisplayMarkup()}</section><section class="panel-section" data-settings-group="developer"><h3>界面维护</h3><button class="text-button" data-action="replay-boot">观看完整启动动画 ↗</button><button class="text-button" data-action="reload-interface">重新载入界面 ↻</button></section>
-    <section class="panel-section" data-settings-group="appearance"><h3>声音</h3><label class="settings-row"><span>歌曲音量</span><input type="range" id="volume" aria-label="歌曲音量" min="0" max="100" value="${Math.round(preferences.volume * 100)}"></label><label class="settings-row"><span>歌曲衔接</span><select id="song-fade-setting" aria-label="歌曲衔接方式"><option value="fade-out" ${preferences.songTransition === "fade-out" ? "selected" : ""}>淡出但不淡入</option><option value="fade-in-out" ${preferences.songTransition === "fade-in-out" ? "selected" : ""}>淡出淡入</option><option value="gapless" ${preferences.songTransition === "gapless" ? "selected" : ""}>无缝播放</option></select></label><label class="settings-row"><span>界面音效</span><input type="checkbox" id="sound-setting" ${preferences.sound ? "checked" : ""}></label><label class="settings-row"><span>音效音量</span><input type="range" id="sound-volume" aria-label="音效音量" min="0" max="100" value="${Math.round(preferences.soundVolume * 100)}"></label><label class="settings-row"><span>氛围 BGM</span><input type="checkbox" id="bgm-setting" ${preferences.bgm ? "checked" : ""}></label><label class="settings-row"><span>BGM 音量</span><input type="range" id="bgm-volume" aria-label="BGM 音量" min="0" max="100" value="${Math.round(preferences.bgmVolume * 100)}"></label><button class="text-button" data-action="sound-preview">试听界面音效 ↗</button></section>
+    <section class="panel-section" data-settings-group="display"><h3>帧率</h3><label class="settings-row"><span>帧率上限</span><select id="frame-limit" aria-label="帧率上限">${FRAME_LIMITS.map(value => `<option value="${value}" ${preferences.frameLimit === value ? 'selected' : ''}>${value ? `${value} FPS` : '不限制'}</option>`).join('')}</select></label><p class="quality-note">后台暂停三维绘制，音乐继续播放。</p></section>
+    <section class="panel-section" data-settings-group="developer"><h3>渲染诊断</h3><label class="settings-row"><span>可见区域绘制</span><select id="glass-occlusion" aria-label="玻璃遮挡优化"><option value="on" ${glassOcclusionMode === "on" ? "selected" : ""}>开启遮挡优化</option><option value="off" ${glassOcclusionMode === "off" ? "selected" : ""}>关闭</option><option value="debug" ${glassOcclusionMode === "debug" ? "selected" : ""}>显示遮挡区域</option></select></label><button class="text-button" data-action="copy-performance">复制性能诊断 ↗</button></section>
+    <section class="panel-section" data-settings-group="developer"><h3>在线错误调试</h3><label class="settings-row"><span>显示详细报错</span><input type="checkbox" id="online-error-display" ${preferences.onlineErrorDisplay ? "checked" : ""}></label><button class="text-button" data-action="show-online-errors" ${preferences.onlineErrorDisplay ? "" : "disabled"}>查看 / 复制报错</button></section>
+    <section class="panel-section" data-settings-group="appearance"><h3>动效与显示</h3><label class="settings-row"><span>页面文字遮罩动画</span><input type="checkbox" id="page-text-mask" ${preferences.pageTextMask ? "checked" : ""}></label><p class="quality-note">关闭后直接显示文字。</p><label class="settings-row"><span>减少动态效果</span><input type="checkbox" id="reduced-motion" ${preferences.reduced ? "checked" : ""}></label></section><section class="panel-section" data-settings-group="desktop"><h3>窗口与全屏</h3>${windowDisplayMarkup()}</section><section class="panel-section" data-settings-group="developer"><h3>界面维护</h3><button class="text-button" data-action="reload-interface">重新载入界面 ↻</button></section>
+    <section class="panel-section" data-settings-group="playback"><h3>音乐播放</h3><label class="settings-row"><span>歌曲音量</span><input type="range" id="volume" aria-label="歌曲音量" min="0" max="100" value="${Math.round(preferences.volume * 100)}"></label><label class="settings-row"><span>歌曲衔接</span><select id="song-fade-setting" aria-label="歌曲衔接方式"><option value="fade-out" ${preferences.songTransition === "fade-out" ? "selected" : ""}>仅淡出</option><option value="fade-in-out" ${preferences.songTransition === "fade-in-out" ? "selected" : ""}>淡出淡入</option><option value="gapless" ${preferences.songTransition === "gapless" ? "selected" : ""}>无缝播放</option></select></label></section><section class="panel-section" data-settings-group="appearance"><h3>界面声音</h3><label class="settings-row"><span>界面音效</span><input type="checkbox" id="sound-setting" ${preferences.sound ? "checked" : ""}></label><label class="settings-row"><span>音效音量</span><input type="range" id="sound-volume" aria-label="音效音量" min="0" max="100" value="${Math.round(preferences.soundVolume * 100)}"></label><label class="settings-row"><span>背景音乐</span><input type="checkbox" id="bgm-setting" ${preferences.bgm ? "checked" : ""}></label><label class="settings-row"><span>背景音乐音量</span><input type="range" id="bgm-volume" aria-label="背景音乐音量" min="0" max="100" value="${Math.round(preferences.bgmVolume * 100)}"></label><button class="text-button" data-action="sound-preview">试听界面音效 ↗</button></section>
     <details class="panel-section" id="musicbrainz-settings" data-settings-group="local"><summary>高级设置 · MusicBrainz</summary><button data-action="enrich-library" class="text-button">补充缺失的在线资料 ↗</button><div id="online-config"></div></details>
+    ${isDesktop() ? `<section class="panel-section" data-settings-group="desktop"><h3>任务栏歌词</h3><label class="settings-row"><span>显示任务栏歌词</span><input type="checkbox" id="taskbar-lyrics-enabled" ${preferences.taskbarLyrics ? 'checked' : ''}></label><button class="primary-button" data-action="restore-taskbar-lyrics">重新显示歌词</button><p id="taskbar-lyrics-status" role="status"></p></section>` : ''}
     ${aboutMarkup(displayVersion)}`;
   $('#panel-body').insertAdjacentHTML('afterbegin', '<section class="panel-section" data-settings-group="local"><h3>音乐库</h3><button data-action="library" class="primary-button">管理音乐库 ↗</button></section>');
   if (lightingLab) $("#panel-body").insertAdjacentHTML("beforeend", `
@@ -2519,7 +2538,7 @@ function renderSettingsPanel() {
 
       <button class="text-button" data-action="lighting-debug" ${preferences.developerMode ? "" : "hidden"}>打开光效调试面板 ↗</button>
       <button class="text-button" data-action="motion-debug" ${preferences.motionDebug ? "" : "hidden"}>打开动画速度调试面板 ↗</button>
-      <button class="text-button" data-action="copy-performance">复制性能诊断 ↗</button>
+
     </section>`);
   groupSettingsContent($("#panel-body"));
   disposeKeybindingEditor = mountKeybindingEditor($('#panel-body'), () => preferences.keybindings, next => {
@@ -2834,6 +2853,12 @@ document.addEventListener("click", (e) => {
     return;
   }
   const action = target.dataset.action;
+  if (action === 'restore-taskbar-lyrics') {
+    preferences.taskbarLyrics = true; savePrefs();
+    const toggle = document.querySelector<HTMLInputElement>('#taskbar-lyrics-enabled'); if (toggle) toggle.checked = true;
+    void configureTaskbarLyrics(true, true).then(() => { $('#taskbar-lyrics-status').textContent = '已重新显示任务栏歌词'; }).catch(error => notify(String(error)));
+    return;
+  }
   if (action === 'settings-category') {
     const category = target.dataset.category as SettingsCategory;
     if (Object.hasOwn(settingsCategories, category)) {
@@ -3300,10 +3325,14 @@ document.addEventListener("change", (e) => {
     updateSelection();
     savePrefs();
   }
+  if (el.id === "taskbar-lyrics-enabled") {
+    preferences.taskbarLyrics = el.checked; savePrefs();
+    void configureTaskbarLyrics(el.checked, el.checked).catch(error => notify(String(error)));
+  }
   if (el.id === "page-text-mask") {
     preferences.pageTextMask = el.checked;
     stage.classList.toggle('no-text-masks', !el.checked);
-    documentDecryption.reset($('#album-detail-content'), preferences.reduced || !el.checked);
+    (playlistDetail ? playlistDecryption : documentDecryption).reset($('#album-detail-content'), preferences.reduced || !el.checked);
     updateSongTransport();
     savePrefs();
   }
@@ -3440,13 +3469,14 @@ document.addEventListener("pointermove", event => {
 }, { passive: true });
 const frameTiming = new MusicFrameTiming();
 const startup = new MusicStartup();
+const frameQuery = new URLSearchParams(location.search);
+const useRenderScheduler = (isDesktop() || frameQuery.get('scheduler') === '1') && frameQuery.get('render') !== 'reference';
 let textMotionTime = 0, textMotionLastFrame: number | undefined;
 function frame(ms: number) {
   frameHandle = 0;
   if (frameDisposed || frameSuspended) return;
   if (!renderScheduler.shouldRender(ms, Boolean(boot?.active || viewer?.isOpen || scene?.musicRenderTransitioning),
-    (isDesktop() || new URLSearchParams(location.search).get("scheduler") === "1") &&
-      new URLSearchParams(location.search).get("render") !== "reference", preferences.frameLimit)) {
+    useRenderScheduler, preferences.frameLimit)) {
     frameHandle = requestAnimationFrame(frame); return;
   }
   const workStart = performance.now();
@@ -3476,11 +3506,12 @@ function frame(ms: number) {
     if (stage.dataset.presentation !== phase) stage.dataset.presentation = phase;
     const cameraPhase = scene.musicPresentationPhase;
     if (stage.dataset.cameraPhase !== cameraPhase) stage.dataset.cameraPhase = cameraPhase;
+    if (playlistDetail) playlistDecryption.update(textMotionTime, undefined, preferences.reduced || !preferences.pageTextMask, !panel && !$('#music-detail').hidden);
     const detailTextVisible = phase === 'detail' &&
       $("#music-detail").dataset.transition === 'open' && !viewer?.isOpen && !panel;
     songView.setVisible(detailTextVisible);
     if (presentation.phase === "detail") {
-      documentDecryption.update(
+      if (!playlistDetail) documentDecryption.update(
         textMotionTime,
         scene.decryptionFrame,
         preferences.reduced || !preferences.pageTextMask,

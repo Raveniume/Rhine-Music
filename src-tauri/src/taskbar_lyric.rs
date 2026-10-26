@@ -26,6 +26,7 @@ pub struct DesktopLyricPayload {
 }
 
 static LAST_PAYLOAD: OnceLock<Mutex<Option<DesktopLyricPayload>>> = OnceLock::new();
+static LYRICS_ENABLED: AtomicBool = AtomicBool::new(true);
 static LYRICS_VISIBLE: AtomicBool = AtomicBool::new(false);
 
 fn last_payload() -> &'static Mutex<Option<DesktopLyricPayload>> {
@@ -62,6 +63,7 @@ pub fn update(app: AppHandle, payload: DesktopLyricPayload) -> Result<(), String
     if let Ok(mut last) = last_payload().lock() {
         *last = Some(payload.clone());
     }
+    app.emit_to("tray-controls", "rhine-taskbar-lyric", &payload).map_err(|e| e.to_string())?;
     app.emit_to("taskbar-lyrics", "rhine-taskbar-lyric", &payload)
         .map_err(|e| e.to_string())?;
     #[cfg(target_os = "macos")]
@@ -72,9 +74,9 @@ pub fn update(app: AppHandle, payload: DesktopLyricPayload) -> Result<(), String
     #[cfg(target_os = "windows")]
     if let Some(window) = app.get_webview_window("taskbar-lyrics") {
         if let Some(placement) = taskbar_placement(window.scale_factor().unwrap_or(1.0)) {
-            apply_placement(&window, placement, payload.visible);
+            apply_placement(&window, placement, payload.visible && LYRICS_ENABLED.load(Ordering::Acquire));
         } else {
-            let _ = window.hide();
+            hide_taskbar_window(&window);
         }
     }
     Ok(())
@@ -84,10 +86,63 @@ pub fn update(app: AppHandle, payload: DesktopLyricPayload) -> Result<(), String
 pub fn ready(app: AppHandle) -> Result<(), String> {
     let payload = last_payload().lock().ok().and_then(|last| last.clone());
     if let Some(payload) = payload {
+        app.emit_to("tray-controls", "rhine-taskbar-lyric", &payload).map_err(|e| e.to_string())?;
         app.emit_to("taskbar-lyrics", "rhine-taskbar-lyric", &payload)
             .map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+#[tauri::command(rename = "desktop_taskbar_lyric_control")]
+pub fn control(app: AppHandle, enabled: bool, restore: bool) -> Result<(), String> {
+    LYRICS_ENABLED.store(enabled, Ordering::Release);
+    let mut payload = last_payload().lock().ok().and_then(|last| last.clone()).unwrap_or(DesktopLyricPayload {
+        visible: false, current: String::new(), next: String::new(), title: "暂无播放".into(),
+        artist: String::new(), playing: false, instrumental: false,
+    });
+    if restore { payload.visible = true; }
+    update(app, payload)
+}
+
+fn show_tray_controls(app: &AppHandle) {
+    // Defer queries outside the native tray callback to avoid re-entering its UI stack.
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || position_tray_controls(&app));
+}
+
+fn position_tray_controls(app: &AppHandle) {
+    // Position before showing; a hidden window's saved origin is not an anchor.
+    if let Some(window) = app.get_webview_window("tray-controls") {
+        let anchor = app.tray_by_id("lyrics").and_then(|tray| tray.rect().ok().flatten());
+        let point = anchor.as_ref().map(|r| r.position.to_physical::<i32>(window.scale_factor().unwrap_or(1.0)));
+        let monitor = point.and_then(|p| app.monitor_from_point(p.x as f64, p.y as f64).ok().flatten())
+            .or_else(|| window.primary_monitor().ok().flatten());
+        if let Some(monitor) = monitor {
+            let scale = monitor.scale_factor();
+            let size = PhysicalSize::new((360.0 * scale) as u32, (190.0 * scale) as u32);
+            let _ = window.set_size(size);
+            // Work-area constraints apply to the full native frame, including
+            // any invisible Windows frame insets, not just the webview size.
+            let outer = window.outer_size().unwrap_or(size);
+            let work = monitor.work_area();
+            let fallback = PhysicalPosition::new(work.position.x + work.size.width as i32, work.position.y + work.size.height as i32);
+            let anchor = point.unwrap_or(fallback);
+            let gap = (8.0 * scale) as i32;
+            let (x, y) = popup_position(anchor.x, anchor.y, outer.width, outer.height,
+                work.position.x, work.position.y, work.size.width, work.size.height, gap);
+            let _ = window.set_position(PhysicalPosition::new(x, y));
+        }
+        let _ = window.show();
+        let _ = window.set_focus();
+        let _ = ready(app.clone());
+    }
+}
+
+fn popup_position(ax: i32, ay: i32, w: u32, h: u32, x: i32, y: i32, width: u32, height: u32, gap: i32) -> (i32, i32) {
+    let right = x + width as i32 - w as i32 - gap;
+    let bottom = y + height as i32 - h as i32 - gap;
+    ((ax - w as i32 / 2).clamp(x + gap, right.max(x + gap)),
+     (if ay < y + height as i32 / 2 { ay + gap } else { ay - h as i32 - gap }).clamp(y + gap, bottom.max(y + gap)))
 }
 
 #[tauri::command(rename = "desktop_taskbar_action")]
@@ -120,7 +175,8 @@ pub fn tray_action(app: AppHandle, action: String) -> Result<(), String> {
             }
             Ok(())
         }
-        "settings" => app.emit_to("main", "rhine-taskbar-action", serde_json::json!({ "action": "settings" })).map_err(|e| e.to_string()),
+        "controls" => { show_tray_controls(&app); Ok(()) },
+        "settings" => { let _ = tray_action(app.clone(), "show".into()); app.emit_to("main", "rhine-taskbar-action", serde_json::json!({ "action": "settings" })).map_err(|e| e.to_string()) },
         "toggle" | "next" | "previous" => app.emit_to("main", "rhine-taskbar-action", serde_json::json!({ "action": action })).map_err(|e| e.to_string()),
         _ => Err("未知的托盘操作".into()),
     }
@@ -129,20 +185,24 @@ pub fn tray_action(app: AppHandle, action: String) -> Result<(), String> {
 pub fn setup_tray_controls(app: &AppHandle, service_url: &tauri::Url) -> Result<(), String> {
     let mut tray_url = service_url.clone();
     tray_url.set_query(Some("desktop=1&tray=1"));
-    WebviewWindowBuilder::new(app, "tray-controls", WebviewUrl::External(tray_url))
+    let window = WebviewWindowBuilder::new(app, "tray-controls", WebviewUrl::External(tray_url))
         .title("RhineMusic")
         .inner_size(360.0, 190.0)
         .min_inner_size(320.0, 170.0)
         .decorations(false)
+        .shadow(false)
         .transparent(true)
         .always_on_top(true)
         .skip_taskbar(true)
         .resizable(false)
         .focused(false)
         .visible(false)
-        .build()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+        .build().map_err(|e| e.to_string())?;
+    let popup = window.clone();
+    window.on_window_event(move |event| {
+        if matches!(event, tauri::WindowEvent::Focused(false)) { let _ = popup.hide(); }
+    });
+    Ok(())
 }
 
 pub fn setup_tray(app: &AppHandle) -> Result<(), String> {
@@ -177,10 +237,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), String> {
             let action = match event.id().as_ref() {
                 "tray-show" => None,
                 "tray-controls" => {
-                    if let Some(window) = app.get_webview_window("tray-controls") {
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    }
+                    show_tray_controls(app);
                     None
                 }
                 "tray-toggle" => Some("toggle"),
@@ -211,11 +268,8 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), String> {
                     let _ = window.unminimize();
                     let _ = window.set_focus();
                 }
-            } else if matches!(event, tauri::tray::TrayIconEvent::Click { button: tauri::tray::MouseButton::Left, .. }) {
-                if let Some(window) = tray.app_handle().get_webview_window("tray-controls") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
+            } else if matches!(event, tauri::tray::TrayIconEvent::Click { button: tauri::tray::MouseButton::Left, button_state: tauri::tray::MouseButtonState::Up, .. }) {
+                show_tray_controls(tray.app_handle());
             }
         })
         .build(app)
@@ -326,7 +380,7 @@ fn taskbar_placement(scale: f64) -> Option<TaskbarGeometry> {
         if horizontal { lyric_height } else { taskbar_height },
         edge,
         (180.0 * scale).round() as u32,
-        (480.0 * scale).round() as u32,
+        (400.0 * scale).round() as u32,
         (160.0 * scale).round() as u32,
         lyric_height,
         false,
@@ -344,10 +398,32 @@ fn apply_placement(
     let position = PhysicalPosition::new(placement.x, placement.y);
     if window.inner_size().ok() != Some(size) { let _ = window.set_size(size); }
     if window.outer_position().ok() != Some(position) { let _ = window.set_position(position); }
-    if placement.hidden || !lyrics_visible {
-        let _ = window.hide();
+    // A queued placement can outlive a settings change. Never restore a window
+    // using the enabled state captured by an earlier worker iteration.
+    if placement.hidden || !lyrics_visible || !LYRICS_ENABLED.load(Ordering::Acquire) {
+        hide_taskbar_window(window);
     } else {
-        let _ = window.show();
+        use windows_sys::Win32::UI::WindowsAndMessaging::{SetWindowPos, ShowWindow, IsIconic, IsWindowVisible, HWND_TOPMOST, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW};
+        if let Ok(handle) = window.hwnd() {
+            let hwnd = handle.0 as windows_sys::Win32::Foundation::HWND;
+            unsafe {
+                if IsWindowVisible(hwnd) == 0 || IsIconic(hwnd) != 0 { ShowWindow(hwnd, SW_SHOWNOACTIVATE); }
+                // Tao caches ALWAYS_ON_TOP. Repeating its setter is a no-op after
+                // Explorer changes Z-order; raise natively without taking focus.
+                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn hide_taskbar_window(window: &tauri::WebviewWindow) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{IsWindowVisible, ShowWindow, SW_HIDE};
+    if let Ok(handle) = window.hwnd() {
+        let hwnd = handle.0 as windows_sys::Win32::Foundation::HWND;
+        // Native restoration bypasses Tao's cached visibility; hide through the
+        // same native API so that a stale HIDDEN flag cannot suppress the call.
+        unsafe { if IsWindowVisible(hwnd) != 0 { ShowWindow(hwnd, SW_HIDE); } }
     }
 }
 
@@ -365,8 +441,7 @@ fn configure_native_taskbar_window(window: &tauri::WebviewWindow) {
     if current & required != required {
         unsafe { SetWindowLongPtrW(hwnd, GWL_EXSTYLE, current | required); }
     }
-    let _ = window.set_focusable(false);
-    let _ = window.set_always_on_top(true);
+
 }
 
 #[cfg(target_os = "windows")]
@@ -376,7 +451,7 @@ pub fn setup_taskbar_window(app: &AppHandle, service_url: &tauri::Url) -> Result
     let window =
         WebviewWindowBuilder::new(app, "taskbar-lyrics", WebviewUrl::External(taskbar_url))
             .title("RhineMusic Lyrics")
-            .inner_size(480.0, 40.0)
+            .inner_size(400.0, 40.0)
             .shadow(false)
             .decorations(false)
             .transparent(true)
@@ -400,7 +475,7 @@ pub fn setup_taskbar_window(app: &AppHandle, service_url: &tauri::Url) -> Result
                 break;
             };
             let placement = taskbar_placement(window.scale_factor().unwrap_or(1.0));
-            let active = LYRICS_VISIBLE.load(Ordering::Acquire);
+            let active = LYRICS_VISIBLE.load(Ordering::Acquire) && LYRICS_ENABLED.load(Ordering::Acquire);
             // Explorer can hide a tool window during Alt+Tab or a taskbar
             // refresh without changing the taskbar rectangle. Re-apply the
             // placement while lyrics are active so the window is restored.
@@ -408,9 +483,11 @@ pub fn setup_taskbar_window(app: &AppHandle, service_url: &tauri::Url) -> Result
             previous = placement;
             let _ = app_handle.run_on_main_thread(move || {
                 if let Some(value) = placement {
-                    apply_placement(&window, value, active);
+                    let visible = LYRICS_VISIBLE.load(Ordering::Acquire)
+                        && LYRICS_ENABLED.load(Ordering::Acquire);
+                    apply_placement(&window, value, visible);
                 } else {
-                    let _ = window.hide();
+                    hide_taskbar_window(&window);
                 }
             });
         }
@@ -421,6 +498,12 @@ pub fn setup_taskbar_window(app: &AppHandle, service_url: &tauri::Url) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn popup_stays_in_work_area_on_negative_and_scaled_monitors() {
+        assert_eq!(popup_position(2530, 1560, 540, 285, 0, 0, 2560, 1528, 12), (2008, 1231));
+        assert_eq!(popup_position(-1900, 10, 360, 190, -1920, 40, 1920, 1040, 8), (-1912, 48));
+    }
 
     #[test]
     fn places_inside_horizontal_taskbar_and_adjacent_to_vertical_taskbar() {

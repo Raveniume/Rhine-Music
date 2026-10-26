@@ -1,10 +1,14 @@
 import './music-settings.css';
 
 export const settingsCategories = {
-  local: '本地歌单设置',
-  appearance: '个性化',
-  display: '画面显示设置',
-  developer: '开发者设置',
+  local: '音乐库',
+  playback: '播放与音频',
+  lyrics: '歌词与频谱',
+  appearance: '外观与动效',
+  desktop: '桌面与托盘',
+  shortcuts: '快捷键',
+  display: '画质与性能',
+  developer: '高级与诊断',
   about: '关于',
 } as const;
 export type SettingsCategory = keyof typeof settingsCategories;

@@ -584,7 +584,8 @@ export class ArchiveScene {
       this.instanceBudget?.reset(); this.shadowBudget.invalidate(); this.fieldCache.invalidate();
       this.covers.selected.visible = !!records[selectedIndex]?.album?.tracks.length;
       // Updating a queue must not lower an inspected card or reset its camera.
-      await this.covers.select(records[selectedIndex]); return;
+      // Keep metadata refresh off the navigation queue while the cover decodes.
+      void this.covers.select(records[selectedIndex]); return;
     }
     if (preserveCovers && playlistRows.length && this.playlistGrid) {
       const location = fileLocation(selectedIndex);

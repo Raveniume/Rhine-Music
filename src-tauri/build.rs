@@ -16,6 +16,7 @@ fn main() {
             "desktop_taskbar_lyric_update",
             "desktop_taskbar_action",
             "desktop_taskbar_lyric_ready",
+            "desktop_taskbar_lyric_control",
             "desktop_tray_action",
         ]),
     ))

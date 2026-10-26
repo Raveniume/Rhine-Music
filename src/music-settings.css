@@ -69,8 +69,8 @@
 .settings-page { max-width: 860px; margin: 0 auto; }
 .settings-page[hidden] { display: none; }
 .settings-page > h2, .settings-library-heading { font-size: 23px; font-weight: 600; margin: 0 48px 30px 0; }
-.settings-page > .panel-section { margin: 0; padding: 24px 0; border-top: 1px solid var(--line); }
-.settings-page > .panel-section > h3 { font-size: 14px; margin: 0 0 16px; }
+.settings-page > .panel-section, .settings-page > .settings-audio > .panel-section { margin: 0; padding: 24px 0; border-top: 1px solid var(--line); }
+.settings-page > .panel-section > h3, .settings-page > .settings-audio > .panel-section > h3 { font-size: 14px; margin: 0 0 16px; }
 .settings-page .settings-row { min-height: 48px; gap: 24px; margin: 0; }
 .settings-page .settings-row > span { font-size: 13px; }
 .settings-page .settings-row input[type="checkbox"] {

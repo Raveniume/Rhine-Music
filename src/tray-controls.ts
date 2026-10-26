@@ -28,10 +28,10 @@ function mount() {
   const style = document.createElement('style');
   style.textContent = `
     :root.rhine-tray-page, :root.rhine-tray-page body { margin:0; width:100%; height:100%; overflow:hidden; background:transparent; color:#17201e; font-family:Inter,"Segoe UI","Microsoft YaHei",sans-serif; }
-    .tray-controls { box-sizing:border-box; width:100%; height:100%; padding:12px 14px 11px; border:1px solid rgba(23,32,30,.22); background:rgba(242,245,242,.97); box-shadow:0 8px 28px rgba(23,32,30,.2); user-select:none; }
+    .tray-controls { box-sizing:border-box; width:100%; height:100%; padding:12px 14px 11px; border-radius:12px; border:1px solid rgba(23,32,30,.22); background:rgba(242,245,242,.97); box-shadow:0 8px 28px rgba(23,32,30,.2); user-select:none; }
     header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
     header small { display:block; color:#6c8079; font-size:9px; letter-spacing:.16em; }
-    header strong { display:block; margin-top:3px; font-size:13px; font-weight:650; }
+    header strong { display:block; max-width:270px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:3px; font-size:13px; font-weight:650; }
     header button { width:24px; height:24px; border:0; background:transparent; color:inherit; font-size:20px; line-height:1; cursor:pointer; }
     header button:hover, header button:focus-visible { background:#c8ef66; outline:none; }
     .tray-lyric { min-width:0; margin:13px 0 10px; padding:9px 10px; border-left:2px solid #0b928d; background:rgba(255,255,255,.5); }
