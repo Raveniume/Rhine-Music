@@ -187,6 +187,9 @@ try {
     await page.locator('[data-action="restore-taskbar-lyrics"]').click();
     await page.waitForTimeout(600);
     assert.equal(await lyric.evaluate(()=>window.__TAURI__.window.getCurrentWindow().isVisible()),true);
+    await lyric.waitForFunction(async()=>Math.abs(innerHeight*devicePixelRatio-(await window.__TAURI__.window.getCurrentWindow().innerSize()).height)<2 && innerHeight>=24);
+    const lyricLayout=await lyric.evaluate(()=>({height:innerHeight,bottom:document.querySelector('[data-current]').getBoundingClientRect().bottom}));
+    assert.ok(lyricLayout.bottom<=lyricLayout.height,JSON.stringify(lyricLayout));
     assert.equal(await page.locator('#taskbar-lyrics-enabled').isChecked(),true);
     await page.evaluate(()=>window.__TAURI__.core.invoke('desktop_tray_action',{action:'controls'}));
     const tray=browser.contexts()[0].pages().find(p=>p.url().includes('tray=1'));
@@ -195,7 +198,13 @@ try {
     assert.ok(bounds.position.x>0 && bounds.position.y>0,JSON.stringify(bounds));
     assert.ok(bounds.position.x+bounds.size.width<=bounds.screen.w+1 && bounds.position.y+bounds.size.height<=bounds.screen.h+1,JSON.stringify(bounds));
     assert.match(bounds.title,/合成曲目/);report.trayPopup=bounds;
+    assert.equal(await tray.evaluate(()=>Math.round(innerHeight*devicePixelRatio)),bounds.size.height,'Tray WebView fills native client area');
     await tray.screenshot({path:`${output}/tray-controls.png`});
+    const beforeToggle=await tray.locator('[data-toggle]').getAttribute('aria-label');
+    await tray.locator('[data-tray-action="toggle"]').click();
+    await tray.waitForFunction(before=>document.querySelector('[data-toggle]').getAttribute('aria-label')!==before,beforeToggle);
+    await tray.locator('[data-tray-action="toggle"]').click();
+    await tray.waitForFunction(before=>document.querySelector('[data-toggle]').getAttribute('aria-label')===before,beforeToggle);
     await tray.evaluate(()=>window.__TAURI__.core.invoke('desktop_tray_action',{action:'hide'}));
   }
   await page.locator('[data-category="appearance"]').click();

@@ -396,21 +396,28 @@ fn apply_placement(
     configure_native_taskbar_window(window);
     let size = PhysicalSize::new(placement.width, placement.height);
     let position = PhysicalPosition::new(placement.x, placement.y);
-    if window.inner_size().ok() != Some(size) { let _ = window.set_size(size); }
+    let repair_frame = window.inner_size().ok() != Some(size);
+    if repair_frame { let _ = window.set_size(size); }
     if window.outer_position().ok() != Some(position) { let _ = window.set_position(position); }
     // A queued placement can outlive a settings change. Never restore a window
     // using the enabled state captured by an earlier worker iteration.
     if placement.hidden || !lyrics_visible || !LYRICS_ENABLED.load(Ordering::Acquire) {
         hide_taskbar_window(window);
     } else {
-        use windows_sys::Win32::UI::WindowsAndMessaging::{SetWindowPos, ShowWindow, IsIconic, IsWindowVisible, HWND_TOPMOST, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW};
+        use windows_sys::Win32::UI::WindowsAndMessaging::{SetWindowPos, ShowWindow, IsIconic, IsWindowVisible, HWND_TOPMOST, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SWP_FRAMECHANGED};
         if let Ok(handle) = window.hwnd() {
             let hwnd = handle.0 as windows_sys::Win32::Foundation::HWND;
             unsafe {
-                if IsWindowVisible(hwnd) == 0 || IsIconic(hwnd) != 0 { ShowWindow(hwnd, SW_SHOWNOACTIVATE); }
+                let restored = IsWindowVisible(hwnd) == 0 || IsIconic(hwnd) != 0;
+                if restored { ShowWindow(hwnd, SW_SHOWNOACTIVATE); }
                 // Tao caches ALWAYS_ON_TOP. Repeating its setter is a no-op after
                 // Explorer changes Z-order; raise natively without taking focus.
-                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+                // ShowWindow can recalculate the non-client area with wParam=0,
+                // leaving a caption-sized inset in a borderless Tao window.
+                // FRAMECHANGED requests the full WM_NCCALCSIZE path even when
+                // the outer size is unchanged, restoring the WebView client area.
+                let frame = if restored || repair_frame { SWP_FRAMECHANGED } else { 0 };
+                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW | frame);
             }
         }
     }

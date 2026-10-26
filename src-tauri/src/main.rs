@@ -328,6 +328,7 @@ fn main() {
             }
         }))
         .plugin(tauri_plugin_window_state::Builder::default()
+            .with_denylist(&["taskbar-lyrics", "tray-controls"])
             // Ignore fullscreen saved by older previews and retain the integrated chrome.
             .with_state_flags(tauri_plugin_window_state::StateFlags::SIZE
                 | tauri_plugin_window_state::StateFlags::POSITION

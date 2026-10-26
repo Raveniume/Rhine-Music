@@ -66,7 +66,7 @@ const waitFor = async (predicate, timeoutMs = 120000) => {
 };
 
 try {
-  const mainTarget = await waitFor(targets => targets.find(target => target.type === 'page' && /desktop=1/.test(target.url) && !/taskbar=1/.test(target.url)));
+  const mainTarget = await waitFor(targets => targets.find(target => target.type === 'page' && /desktop=1/.test(target.url) && !/taskbar=1|tray=1/.test(target.url)));
   const main = await connect(mainTarget);
   await waitFor(async () => await main.evaluate(`!!window.rhineMusic && !!document.querySelector('.desktop-chrome')`));
   const taskbarTarget = await waitFor(targets => targets.find(target => target.type === 'page' && /taskbar=1/.test(target.url)));
@@ -83,6 +83,10 @@ try {
   assert.ok(size.width >= 260 && size.height >= 24, JSON.stringify(size));
   report.checks.push('Synthetic lyric reaches the separate taskbar WebView and shows its native window');
   report.window = { visible, position, size };
+  // Native resize and WebView resize arrive on separate event loops.
+  // Require convergence, then recheck after the native recovery interval.
+  await waitFor(async () => await taskbar.evaluate(`Math.abs(innerHeight * devicePixelRatio - ${size.height}) < 2`), 5000);
+  await sleep(600);
   const layout = await taskbar.evaluate(`(() => { const root=document.querySelector('.taskbar-lyric'), text=document.querySelector('[data-current]');return {height:innerHeight,screenHeight:screen.height*devicePixelRatio,workHeight:screen.availHeight*devicePixelRatio,dpr:devicePixelRatio,font:parseFloat(getComputedStyle(document.querySelector('[data-current]')).fontSize),textBottom:text.getBoundingClientRect().bottom,rootBottom:root.getBoundingClientRect().bottom};})()`);
   assert.ok(layout.height>=24 && layout.height<=48 && layout.textBottom<=layout.height && layout.rootBottom<=layout.height, JSON.stringify(layout));
   assert.ok(layout.font>=18, JSON.stringify(layout));
@@ -114,7 +118,7 @@ try {
   if (child.exitCode === null) {
     try {
       const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
-      const target = targets.find(item => item.type === 'page' && /desktop=1/.test(item.url) && !/taskbar=1/.test(item.url));
+      const target = targets.find(item => item.type === 'page' && /desktop=1/.test(item.url) && !/taskbar=1|tray=1/.test(item.url));
       if (target) {
         const main = await connect(target);
         await main.evaluate(`window.__TAURI__.core.invoke('desktop_window_action', { action: 'close' })`);
