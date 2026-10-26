@@ -138,6 +138,11 @@ try {
   for(let cycle=0;cycle<3;cycle++) {
     await page.locator('.music-back').click();await page.waitForTimeout(1300);
     await page.locator('.music-view-toggle').click();await page.waitForTimeout(1100);
+    if(cycle===2)await page.evaluate(()=>{
+      window.qaOriginalRAF=requestAnimationFrame;window.qaOriginalCancelRAF=cancelAnimationFrame;
+      window.requestAnimationFrame=callback=>setTimeout(()=>callback(performance.now()),100);
+      window.cancelAnimationFrame=id=>clearTimeout(id);
+    });
     await page.evaluate(()=>{window.miniHiddenFrames=0;window.watchMini=true;const f=()=>{if(!window.watchMini)return;if(document.querySelector('#mini-playback-below').hidden)window.miniHiddenFrames++;requestAnimationFrame(f);};f();});
     const at=Date.now();await page.locator('[data-overview-playlist-open]').filter({hasText:'合成歌单'}).first().click();
     await page.locator('[aria-label="歌单歌曲列表"]').waitFor({state:'visible'});
@@ -146,6 +151,10 @@ try {
     assert.equal(await page.locator('#album-detail-content > h1 .document-redaction-window').count(),0);
     assert.equal(await page.evaluate(()=>{window.watchMini=false;return window.miniHiddenFrames;}),0,'Mini lyrics stay continuous across archive/overview/playlist');
     report.repeatedPlaylistOpen.push(elapsed);
+    if(cycle===2){
+      report.lowFrameMaskComplete=true;
+      await page.evaluate(()=>{window.requestAnimationFrame=window.qaOriginalRAF;window.cancelAnimationFrame=window.qaOriginalCancelRAF;});
+    }
   }
   await page.locator('.music-back').click();await page.waitForTimeout(1300);
   await page.locator('.music-view-toggle').click();await page.waitForTimeout(1100);

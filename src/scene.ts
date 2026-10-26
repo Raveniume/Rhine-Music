@@ -1565,6 +1565,8 @@ export class ArchiveScene {
       this.musicRenderTransitioning, Math.min(0.025, texel), this.last,this.rapidSwitch.active?12:30);
   }
 
+  resetMotionClock(time: number) { this.last = time; }
+
   update(
     time: number,
     cinematic?: { reveal: number; lift: number; zoom: number; time: number; musicIntro?: boolean },
@@ -1572,7 +1574,10 @@ export class ArchiveScene {
   ) {
     if (this.disposed) return;
     this.musicIntroAnimating = Boolean(cinematic?.musicIntro);
-    const realDt = Math.min(time - this.last || 0.016, 0.05);
+    const elapsed = Math.max(0, time - this.last || 0.016);
+    // Music springs have analytic solutions and placement uses a polynomial
+    // timeline. Clamping their dt slows the whole shot below 20 FPS.
+    const realDt = musicLibrary && !cinematic ? elapsed : Math.min(elapsed, 0.05);
     // Advance a shared animation timeline, preserving the authored intro and
     // reduced-motion response. Row lighting receives this same dt exactly once.
     const speed = musicLibrary && !cinematic && !this.reduced ? getMusicMotionSpeed() : 1;

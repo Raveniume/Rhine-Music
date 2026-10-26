@@ -25,7 +25,7 @@ assert.equal(musicArchiveTravelDuration(8, 0), 2.4);
 assert.equal(musicArchiveTravelDuration(0, 64), 2.4);
 assert.equal(musicArchiveTravelDuration(-8, -100), 2.4);
 for (const [lanes, rows] of [[1, 1], [4, 30], [-8, -120], [0, 64]]) {
-  for (const fps of [20, 30, 60, 120]) for (const speed of [.25, 1, 3]) {
+  for (const fps of [10, 20, 30, 60, 120]) for (const speed of [.25, 1, 3]) {
     const springs = tracks(), motion = new MusicArchiveMotion(), targets = target(lanes, rows);
     motion.observe(springs, zero, rates);
     motion.retarget(springs, targets);
@@ -242,7 +242,8 @@ function navigationFixture(mode = 'filled', reduced = false, speed = 1) {
   const api = new Function('records', 'archiveColumns', 'columnFiles', 'fileLocation', 'fileAtCell', 'nearestOccurrence', 'wrap', 'scene', 'AlbumPresentation', 'arrayMode', transpile(`
     let selected = 0, libraryRebuilding = false, libraryIntent;
     const ready = true, boot = { active: false };
-    const preferences = { rememberColumnPosition: true, arrayMode };
+    const preferences = { rememberColumnPosition: true, arrayMode, modelLooping: true };
+    const modelPosition = (index, count) => wrap(index, count);
     const columnMemory = new Map(archiveColumns.map((name, lane) => [name, records[columnFiles(lane)[0]].id]));
     const updateSelection = () => {}, cancelTrackReveal = () => {}, syncAlbumNavigation = () => {}, preloadNearbyCovers = () => {};
     const effects = { play() {} }, overviewUI = { collapse() {} };

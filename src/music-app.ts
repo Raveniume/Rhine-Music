@@ -3480,7 +3480,9 @@ function frame(ms: number) {
     frameHandle = requestAnimationFrame(frame); return;
   }
   const workStart = performance.now();
-  const textDt = textMotionLastFrame === undefined ? 0 : Math.min(.05, Math.max(0, ms - textMotionLastFrame) / 1000);
+  // Decorative timelines use elapsed time; a slow frame must not lengthen a wipe.
+  // suspendPage/resetFrameTiming excludes time spent hidden.
+  const textDt = textMotionLastFrame === undefined ? 0 : Math.max(0, ms - textMotionLastFrame) / 1000;
   textMotionLastFrame = ms;
   if (!document.hidden && scene) {
     frameTiming.begin(ms);
@@ -3558,6 +3560,7 @@ function resetFrameTiming() {
   frameCount = 0;
   lastFrame = undefined;
   textMotionLastFrame = undefined;
+  scene?.resetMotionClock(performance.now() / 1000);
   frameTiming.reset();
 }
 function suspendPage() {

@@ -53,7 +53,7 @@ assert.equal(getMusicMotionSpeed(), 1, 'Invalid live values also restore normal 
 function measure(speed, fps, lightDuration = 1.1) {
   setMusicMotionSpeed(speed);
   close(musicMotionDuration(460), 460 / speed, 1e-9, 'DOM durations use the same multiplier');
-  const dt = Math.min(1 / fps, 0.05) * getMusicMotionSpeed();
+  const dt = (1 / fps) * getMusicMotionSpeed();
   const placement = new MusicPlacementMotion();
   const rail = { value: 0, velocity: 0 };
   const light = { value: 0, velocity: 0 };
@@ -91,7 +91,7 @@ function measure(speed, fps, lightDuration = 1.1) {
   return times;
 }
 
-for (const fps of [20, 30, 60, 120]) {
+for (const fps of [10, 20, 30, 60, 120]) {
   const baseline = measure(1, fps);
   for (const speed of [0.25, 1, 3]) {
     const actual = measure(speed, fps);
