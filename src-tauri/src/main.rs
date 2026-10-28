@@ -8,10 +8,10 @@ use std::{
     time::{Duration, Instant},
 };
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 mod instance_handoff;
 mod taskbar_lyric;
+mod update_download;
 
 struct MusicService(Mutex<Option<Child>>);
 
@@ -260,7 +260,14 @@ fn desktop_consume_first_launch() -> Result<bool, String> {
 
 #[tauri::command]
 async fn desktop_install_update(app: tauri::AppHandle, url: String, sha256: String) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || install_update(app, url, sha256)).await.map_err(|e| e.to_string())?
+    static INSTALLING: AtomicBool = AtomicBool::new(false);
+    if INSTALLING.swap(true, Ordering::AcqRel) { return Err("正在下载更新，请查看关于页面的进度".into()); }
+    struct ResetInstall;
+    impl Drop for ResetInstall { fn drop(&mut self) { INSTALLING.store(false, Ordering::Release); } }
+    tauri::async_runtime::spawn_blocking(move || {
+        let _reset = ResetInstall;
+        install_update(app, url, sha256)
+    }).await.map_err(|e| e.to_string())?
 }
 fn install_update(app: tauri::AppHandle, url: String, sha256: String) -> Result<(), String> {
     let parsed: tauri::Url = url.parse().map_err(|_| "更新地址无效".to_owned())?;
@@ -270,19 +277,9 @@ fn install_update(app: tauri::AppHandle, url: String, sha256: String) -> Result<
     let dir = app.path().app_cache_dir().map_err(|e| e.to_string())?.join("updates");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let target = dir.join(filename);
-    let client = reqwest::blocking::Client::builder().user_agent("RhineMusic-Updater/1").timeout(Duration::from_secs(300)).build().map_err(|e| e.to_string())?;
-    let mut response = client.get(url).send().map_err(|e| e.to_string())?;
-    if !response.status().is_success() { return Err(format!("更新下载返回 {}", response.status())); }
-    let mut file = std::fs::OpenOptions::new().create(true).truncate(true).read(true).write(true).open(&target).map_err(|e| e.to_string())?;
-    std::io::copy(&mut response, &mut file).map_err(|e| e.to_string())?;
-    use std::io::{Read, Seek};
-    file.rewind().map_err(|e| e.to_string())?;
-    let mut hasher = Sha256::new();
-    let mut buffer = [0u8; 64 * 1024];
-    loop { let count = file.read(&mut buffer).map_err(|e| e.to_string())?; if count == 0 { break; } hasher.update(&buffer[..count]); }
-    let digest = format!("{:x}", hasher.finalize());
-    if !digest.eq_ignore_ascii_case(&sha256) { drop(file); let _ = std::fs::remove_file(&target); return Err("更新文件校验失败".into()); }
-    drop(file);
+    update_download::download(&url, &target, &sha256, |message| {
+        let _ = app.emit_to("main", "rhine-update-progress", serde_json::json!({ "message": message }));
+    })?;
     #[cfg(windows)] {
         use std::os::windows::process::CommandExt;
         let app_pid = std::process::id();
