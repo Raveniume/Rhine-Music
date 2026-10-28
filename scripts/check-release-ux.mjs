@@ -276,11 +276,18 @@ try {
   await page.locator('[data-online-track="netease-9000"]').click();
   await page.waitForFunction(()=>window.rhineMusic.player.currentTrack?.id==='netease-9000' && document.querySelector('#song-view') && document.querySelector('#music-detail')?.getAttribute('aria-hidden')==='false');
   assert.ok((await page.locator('#album-detail-content > h1').textContent()).includes('搜索独立曲目 1'));
+  await page.waitForFunction(()=>window.rhineMusic.presentation.cameraReady);
   await page.screenshot({path:output+'/search-playing-detail.png'});
   await page.locator('.music-back').click(); await page.waitForTimeout(1300);
   await page.locator('[data-action="next"]').first().click(); await page.waitForTimeout(800);
   await page.locator('#transport-track').click();
   await page.waitForFunction(()=>document.querySelector('#album-detail-content > h1')?.textContent.includes('搜索独立曲目 1') && document.querySelector('#music-detail')?.getAttribute('aria-hidden')==='false');
+  await page.locator('[data-action="search"]').first().click();
+  await page.locator('[data-online-track="netease-9001"]').click();
+  await page.waitForFunction(()=>window.rhineMusic.player.currentTrack?.id==='netease-9001' && document.querySelector('#album-detail-content > h1')?.textContent.includes('搜索独立曲目 2'));
+  await page.waitForFunction(()=>window.rhineMusic.presentation.cameraReady);
+  await page.locator('#transport-track').click();
+  await page.waitForFunction(()=>window.rhineMusic.presentation.cameraReady && document.querySelector('#album-detail-content > h1')?.textContent.includes('搜索独立曲目 2'));
   report.searchPlayingDetail=true;
   await page.locator('#netease-login-button').click();
   await page.locator('[data-login-provider="qq"]').click();
