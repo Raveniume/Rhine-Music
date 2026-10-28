@@ -14,3 +14,10 @@
 - 本次未重新执行此前被自动审批拒绝的完整安装命令，也未换用 UI 点击安装绕过该拒绝。
 
 **inAppUpdateChecked=false；installerRuntimeChecked=false。** 当前实际安装仍为 0.4.13，下载/安装/自动重启/数据保留的完整验收仍未完成。0.4.15 的修复需要安装新版才能生效，不能声称已修复当前正在运行的旧进程。
+
+## 发布与实际检查
+
+- 源提交 `10ae4ef`；[Actions 40668174515](https://github.com/Raveniume/Rhine-Music/actions/runs/40668174515) 构建及发布成功，[v0.4.15](https://github.com/Raveniume/Rhine-Music/releases/tag/v0.4.15) 已公开，旧标签和安装包保留。
+- TypeScript / 生产前端构建通过；Rust 测试 8/8 通过；更新界面回归通过。
+- 发布后再次使用 Computer Use 查看实际已安装的 0.4.13，关于页面显示“发现新版本 V0.4.15”；未点击下载并安装。
+- 只下载公开安装包时也遇到传输提前 EOF；随后通过 HTTP Range 续传完成。文件大小 143,208,411 字节，SHA-256 与发布清单一致：`128ccf7bb0a9de9d063e6e8aef703f00eb50df2e1650b99d05ebcba4baba60c6`。此项由独立下载工具完成，未执行安装器，不计入应用内完整验收。
