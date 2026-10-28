@@ -52,6 +52,7 @@ page.on('pageerror',e=>errors.push(e.stack));
 await page.addInitScript(()=>{localStorage.setItem('rhine-music-preferences',JSON.stringify({startupOpening:true,reduced:false,sfx:false,theme:'night',quality:'performance'}));});
 const silence=Buffer.alloc(44+8000*2*180);silence.write('RIFF');silence.writeUInt32LE(silence.length-8,4);silence.write('WAVEfmt ',8);silence.writeUInt32LE(16,16);silence.writeUInt16LE(1,20);silence.writeUInt16LE(1,22);silence.writeUInt32LE(8000,24);silence.writeUInt32LE(16000,28);silence.writeUInt16LE(2,32);silence.writeUInt16LE(16,34);silence.write('data',36);silence.writeUInt32LE(silence.length-44,40);
 const tracks = Array.from({length:120},(_,i)=>({id:`netease-${1000+i}`,title:`合成曲目 ${String(i+1).padStart(3,'0')}`,artist:'测试歌手 / 合作歌手',albumId:`album-${i}`,duration:180,format:'在线音频',browserPlayable:true,onlineSource:{provider:'netease',id:String(1000+i),albumTitle:'合成专辑'}}));
+const fixtureLyrics = Array.from({length:20},(_,i)=>`[00:${String(i*3).padStart(2,'0')}.00]合成歌词第 ${i+1} 行 · 用于检查底部渐隐`).join('\n');
 let releaseDelayed;
 const delayedPage = new Promise(resolve => { releaseDelayed=resolve; });
 await page.route('**/api/**',async route=>{
@@ -65,8 +66,8 @@ await page.route('**/api/**',async route=>{
     p.endsWith('/playlists')?{playlists:[{id:'123',name:'合成歌单 · 档案测试',trackCount:120,owned:true},{id:'456',name:'延迟歌单',trackCount:12,owned:true}],hasMore:false}:
     p.endsWith('/tracks')?{tracks:p.includes('/456/')?[]:tracks.slice(Number(url.searchParams.get('offset')),Number(url.searchParams.get('offset'))+50),total:p.includes('/456/')?0:120}:
     p.includes('/together')?{session:'test',inRoom:false,active:false,queueIds:[],chat:{connected:false,messages:[]}}:
-    p.endsWith('/info')?{track:tracks[0],album:{title:'合成专辑'},lyrics:{original:'[00:00.00]合成歌词第一行\n[00:03.00]合成歌词第二行'}}:
-    p.includes('/lyric')?{original:'[00:00.00]合成歌词第一行\n[00:03.00]合成歌词第二行'}:{};
+    p.endsWith('/info')?{track:tracks[0],album:{title:'合成专辑'},lyrics:{original:fixtureLyrics}}:
+    p.includes('/lyric')?{original:fixtureLyrics}:{};
   await route.fulfill({json}).catch(()=>{});
 });
 try {
@@ -130,6 +131,11 @@ try {
   assert.ok(frames.some(f=>f.numberAnimation>0),'SONG number has a live rolling animation');
   for(const f of frames)if(f.rapid&&f.title&&f.faces)assert.equal(f.faces,f.title,'Every painted settled title matches the current selection');
   report.wheel=frames;
+  for(const number of [18,20]) {
+    await page.locator('[data-song-bar="'+(number-1)+'"]').dispatchEvent('click');
+    await page.waitForTimeout(650);
+    await page.screenshot({path:output+'/number-'+number+'.png'});
+  }
   await page.locator('#selection-genre').click();
   await page.locator('[aria-label="歌单歌曲列表"]').waitFor({state:'visible'});
   assert.equal(await page.locator('.playlist-detail-tools').count(),0);
