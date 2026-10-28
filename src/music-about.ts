@@ -24,7 +24,18 @@ export async function checkForUpdates(current: string, interactive = true) {
   try {
     const release: Release = await (window.__TAURI_INTERNALS__ ? invoke('desktop_check_update') : fetch('https://api.github.com/repos/Raveniume/Rhine-Music/releases/latest', { signal: AbortSignal.timeout(15000) }).then(response => { if (!response.ok) throw Error(`GitHub HTTP ${response.status}`); return response.json(); }));
     const remote = String(release.tag_name || release.name || '').replace(/^v/i, '');
-    if (!remote || !newer(remote, current)) { if (status) status.textContent = `已是最新版本 V${current}`; return false; }
+    if (!/^\d+\.\d+\.\d+$/.test(remote)) throw Error('更新版本信息无效');
+    if (!newer(remote, current)) { if (status) status.textContent = `已是最新版本 V${current}`; return false; }
+    if (!/Windows/i.test(navigator.userAgent)) {
+      if (status) {
+        status.replaceChildren(document.createTextNode(`发现新版本 V${remote}。`));
+        const link = document.createElement('a');
+        link.href = `${RHINE_REPOSITORY}/releases/tag/v${remote}`;
+        link.target = '_blank'; link.rel = 'noopener'; link.textContent = '查看适用安装包 ↗';
+        status.append(link);
+      }
+      return true;
+    }
     const assets = Array.isArray(release.assets) ? release.assets : [];
     const installer = assets.find(asset => /windows.*setup.*\.exe$/i.test(asset.name || '') || /setup.*\.exe$/i.test(asset.name || ''));
     const checksum = assets.find(asset => asset.name === `${installer?.name}.sha256`);

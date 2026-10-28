@@ -46,12 +46,11 @@ jobs:
         run: |
           test "$(node -p "require('./package.json').version")" = "$VERSION"
           test -f "release-assets/Rhine-Music-Windows-$VERSION-x64-Setup.exe"
-          test -f "release-assets/Rhine-Music-macOS-$VERSION.dmg"
           node --input-type=module <<'JS'
           import fs from 'node:fs';
           import {createHash} from 'node:crypto';
           const version=process.env.VERSION;
-          for(const suffix of [`Windows-${version}-x64-Setup.exe`,`macOS-${version}.dmg`]) {
+          for(const suffix of [`Windows-${version}-x64-Setup.exe`]) {
             const file=`release-assets/Rhine-Music-${suffix}`;
             const expected=fs.readFileSync(file+'.sha256','utf8').split(/\s+/)[0];
             const actual=createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -60,7 +59,7 @@ jobs:
           const log=fs.readFileSync('CHANGELOG.md','utf8');
           const section=log.split(/^## /m).find(s=>s.split(/\r?\n/)[0].includes(`· ${version} ·`));
           if(!section)throw Error('Missing changelog');
-          fs.writeFileSync('/tmp/release-notes.md','## '+section.trim()+'\n\nWindows x64 安装包与 macOS DMG 使用同一次成功构建的原始产物。macOS 仅完成原生构建，未进行实机界面验收。\n');
+          fs.writeFileSync('/tmp/release-notes.md','## '+section.trim()+'\n\nWindows x64 安装包使用成功构建的原始产物。macOS 发布须按 docs/MACOS-RELEASE.md 单独验收。\n');
           JS
           gh release create "v$VERSION" --target "$SOURCE_SHA" --draft --title "RhineMusic $VERSION" --notes-file /tmp/release-notes.md
           gh release upload "v$VERSION" release-assets/*

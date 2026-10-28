@@ -231,9 +231,20 @@ async fn desktop_check_update() -> Result<serde_json::Value, String> {
 }
 fn check_update() -> Result<serde_json::Value, String> {
     let client = reqwest::blocking::Client::builder().user_agent("RhineMusic-Updater/1").timeout(Duration::from_secs(10)).build().map_err(|e| e.to_string())?;
-    let response = client.get("https://api.github.com/repos/Raveniume/Rhine-Music/releases/latest").send().map_err(|e| e.to_string())?;
-    if !response.status().is_success() { return Err(format!("GitHub 更新接口返回 {}", response.status())); }
-    response.json::<serde_json::Value>().map_err(|e| e.to_string())
+    // Release assets do not share the anonymous REST API rate limit. The
+    // manifest is generated from the exact installer during publication.
+    let mut errors = Vec::new();
+    for url in [
+        "https://github.com/Raveniume/Rhine-Music/releases/latest/download/update.json",
+        "https://api.github.com/repos/Raveniume/Rhine-Music/releases/latest",
+    ] {
+        match client.get(url).send().and_then(|r| r.error_for_status()).and_then(|r| r.json::<serde_json::Value>()) {
+            Ok(value) if value["tag_name"].is_string() && value["assets"].is_array() => return Ok(value),
+            Ok(_) => errors.push("更新信息格式无效".to_owned()),
+            Err(error) => errors.push(error.to_string()),
+        }
+    }
+    Err(format!("暂时无法获取更新，请稍后重试。{}", errors.join("；")))
 }
 
 #[tauri::command]
@@ -270,7 +281,7 @@ fn install_update(app: tauri::AppHandle, url: String, sha256: String) -> Result<
     let mut buffer = [0u8; 64 * 1024];
     loop { let count = file.read(&mut buffer).map_err(|e| e.to_string())?; if count == 0 { break; } hasher.update(&buffer[..count]); }
     let digest = format!("{:x}", hasher.finalize());
-    if !digest.eq_ignore_ascii_case(&sha256) { let _ = std::fs::remove_file(&target); return Err("更新文件校验失败".into()); }
+    if !digest.eq_ignore_ascii_case(&sha256) { drop(file); let _ = std::fs::remove_file(&target); return Err("更新文件校验失败".into()); }
     drop(file);
     #[cfg(windows)] {
         use std::os::windows::process::CommandExt;

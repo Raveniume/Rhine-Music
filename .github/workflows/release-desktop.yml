@@ -37,7 +37,6 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-          - os: macos-latest
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -49,27 +48,6 @@ jobs:
       - name: Build Windows runtime package
         if: matrix.os == 'windows-latest'
         run: npm run desktop:build
-      - name: Prepare macOS runtime
-        if: matrix.os == 'macos-latest'
-        run: npm run desktop:prepare
-      - name: Generate macOS application icon
-        if: matrix.os == 'macos-latest'
-        shell: bash
-        run: |
-          mkdir -p src-tauri/icons/rhine.iconset
-          for size in 16 32 128 256 512; do
-            sips -s format png -z "$size" "$size" public/icons/icon-512.png --out "src-tauri/icons/rhine.iconset/icon_${size}x${size}.png" >/dev/null
-            if [ "$size" -le 256 ]; then
-              double=$((size * 2))
-              sips -s format png -z "$double" "$double" public/icons/icon-512.png --out "src-tauri/icons/rhine.iconset/icon_${size}x${size}@2x.png" >/dev/null
-            fi
-          done
-          iconutil -c icns src-tauri/icons/rhine.iconset -o src-tauri/icons/icon.icns
-          rm -rf src-tauri/icons/rhine.iconset
-          node -e "const fs=require('fs');const p='src-tauri/tauri.conf.json';const c=JSON.parse(fs.readFileSync(p,'utf8'));c.bundle.icon=[...c.bundle.icon,'icons/icon.icns'];fs.writeFileSync(p,JSON.stringify(c,null,2)+'\\n')"
-      - name: Build macOS DMG
-        if: matrix.os == 'macos-latest'
-        run: npx tauri build --bundles dmg -- --locked
       - name: Install NSIS
         if: matrix.os == 'windows-latest'
         shell: pwsh
@@ -89,16 +67,6 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: npm run installer:build -- --source release/Rhine-Music-Windows --compiler 'C:\Program Files (x86)\NSIS\makensis.exe' --webview2 "$env:WEBVIEW_BOOTSTRAPPER"
-      - name: Hash release asset
-        if: matrix.os == 'macos-latest'
-        shell: bash
-        run: |
-          version=$(node -p "require('./package.json').version")
-          file=$(find src-tauri/target/release/bundle/dmg -maxdepth 1 -name '*.dmg' -print -quit)
-          target="release-assets/Rhine-Music-macOS-${version}.dmg"
-          mkdir -p release-assets
-          cp "$file" "$target"
-          sha256sum "$target" > "$target.sha256"
       - name: Copy Windows release asset
         if: matrix.os == 'windows-latest'
         shell: pwsh
@@ -106,6 +74,8 @@ jobs:
           New-Item -ItemType Directory -Force release-assets | Out-Null
           Copy-Item release/Installers/Rhine-Music-Windows-*-x64-Setup.exe release-assets/
           Copy-Item release/Installers/Rhine-Music-Windows-*-x64-Setup.exe.sha256 release-assets/
+      - name: Generate update manifest
+        run: node scripts/write-update-manifest.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: RhineMusic-${{ matrix.os }}
@@ -117,6 +87,7 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: release-assets
@@ -126,5 +97,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --title "RhineMusic $TAG"
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          const version = process.env.TAG.replace(/^v/, '');
+          const section = fs.readFileSync('CHANGELOG.md','utf8').split(/^## /m).find(s => s.split(/\r?\n/)[0].includes(`· ${version} ·`));
+          if (!section) throw Error('Missing release notes');
+          fs.writeFileSync('/tmp/notes.md', '## '+section.trim()+'\n\n本次发布 Windows x64 安装包。macOS 旧包存在打开失败反馈；新版 DMG 暂停自动发布，等待 Mac 签名、公证和实机验收。Mac 接手流程见 [发布规范](https://github.com/Raveniume/Rhine-Music/blob/main/docs/MACOS-RELEASE.md)。\n');
+          JS
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --notes-file /tmp/notes.md --title "RhineMusic $TAG"
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" release-assets/*
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
