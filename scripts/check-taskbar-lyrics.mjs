@@ -92,7 +92,7 @@ try {
   assert.ok(layout.font>=18, JSON.stringify(layout));
   assert.ok(position.y>=layout.workHeight && position.y+size.height<=layout.screenHeight+1,JSON.stringify({position,size,layout}));
   report.layout=layout;
-  assert.ok(Math.abs(size.width/layout.dpr-400)<1,'Compact taskbar width is 400 logical pixels');
+  assert.ok(Math.abs(size.width/layout.dpr-340)<1,'Compact taskbar width is 340 logical pixels');
   if (process.env.RHINE_TASKBAR_SWITCH_MS) {
     await main.evaluate(`window.__TAURI__.core.invoke('desktop_tray_action',{action:'show'})`);
     console.log('Taskbar ready for foreground switching');

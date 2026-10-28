@@ -380,7 +380,7 @@ fn taskbar_placement(scale: f64) -> Option<TaskbarGeometry> {
         if horizontal { lyric_height } else { taskbar_height },
         edge,
         (180.0 * scale).round() as u32,
-        (400.0 * scale).round() as u32,
+        (340.0 * scale).round() as u32,
         (160.0 * scale).round() as u32,
         lyric_height,
         false,
@@ -458,7 +458,7 @@ pub fn setup_taskbar_window(app: &AppHandle, service_url: &tauri::Url) -> Result
     let window =
         WebviewWindowBuilder::new(app, "taskbar-lyrics", WebviewUrl::External(taskbar_url))
             .title("RhineMusic Lyrics")
-            .inner_size(400.0, 40.0)
+            .inner_size(340.0, 40.0)
             .shadow(false)
             .decorations(false)
             .transparent(true)

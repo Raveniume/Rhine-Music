@@ -302,6 +302,7 @@ body:has(.rhine-loading:not([hidden])) .desktop-chrome { color: #42473f; }
 .rhine-loading .auth-status i { display: none; }
 /* Text metrics accommodate the new project name; all geometric tracks are unchanged. */
 .rhine-loading .brand { width: 370px; }
+.rhine-loading .brand p { justify-content: flex-start; gap: 18px; }
 .rhine-loading .brand h1 { font-size: 36px; }
 .rhine-loading .welcome-company { left: 0; width: 480px; }
 .rhine-loading .welcome-company strong { font-size: 44px; }

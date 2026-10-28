@@ -8,6 +8,7 @@ export class DocumentDecryption {
     private selector = "h2, .detail-title-cn, .metadata dd, .tab-panel p, .research-notes li, .log-row",
     private holdSeconds?: number,
     private includeRoot = false,
+    private sweepSeconds = 0.95,
   ) {}
   private root: HTMLElement | null = null;
   private covers: Cover[] = [];
@@ -107,7 +108,7 @@ export class DocumentDecryption {
         } else if (frame && frame.clarity > 0) this.started = now;
       }
       if (this.started !== null)
-        this.progress = Math.min(1, Math.max(0, (now - this.started) / 0.95));
+        this.progress = Math.min(1, Math.max(0, (now - this.started) / this.sweepSeconds));
     }
     if (this.progress === 1) this.remove();
     else if (this.started !== null) this.paint();

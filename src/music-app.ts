@@ -559,7 +559,7 @@ const documentDecryption = new DocumentDecryption(
   "h1, .detail-overline > span, .detail-artist, .album-facts small, .album-facts span, .track-name strong, .album-about p",
   0.35,
 );
-const playlistDecryption = new DocumentDecryption("h1, .detail-overline > span, .detail-artist, .playlist-continuous-row .track-number, .playlist-continuous-row strong, .playlist-continuous-row small, .playlist-continuous-row .track-duration", 0);
+const playlistDecryption = new DocumentDecryption("h1, .detail-overline > span, .detail-artist, .playlist-continuous-row .track-number, .playlist-continuous-row strong, .playlist-continuous-row small, .playlist-continuous-row .track-duration", 0.32, false, 1.2);
 const tabTransition = new ContentTransition();
 const detailTransition = new SurfaceTransition(
   $("#music-detail"),
@@ -607,7 +607,7 @@ async function openPlaylistDetail(row: number) {
   // The playlist is a readable list while the shelf camera is still moving.
   // Do not make opening it depend on the physical cover's readiness gate.
   if (!samePlaylist) {
-    detailTransition.show(preferences.reduced);
+    detailTransition.hide(true);
     playlistDecryption.reset($("#album-detail-content"), preferences.reduced || !preferences.pageTextMask);
   }
   $('#music-detail').inert = !!panel;
@@ -674,7 +674,7 @@ const presentation = new MusicPresentation({
   // Reveal the detail surface once the selected box is readable. The scene's
   // final readiness gate still controls inspection and camera completion, but
   // the user gets immediate structural feedback during the remaining settle.
-  presentationReady: () => Boolean(playlistDetail || (scene && (scene.musicPresentationReady || scene.musicPresentationPreviewReady))),
+  presentationReady: () => Boolean(scene && (playlistDetail ? scene.musicOverviewProgress < .45 : (scene.musicPresentationReady || scene.musicPresentationPreviewReady))),
   archiveReady: () => !!playlistDetail || (!!scene?.musicArchiveReady && scene.musicOverviewProgress < .02),
   archiveInteractive: () => scene?.musicArchiveInteractive ?? false,
   enterCamera: () => {
@@ -717,7 +717,8 @@ const presentation = new MusicPresentation({
     detail.setAttribute("aria-hidden", "false");
     content.inert = false;
     content.scrollTop = 0;
-    if (!playlistDetail) documentDecryption.reset(content, preferences.reduced || !preferences.pageTextMask);
+    if (playlistDetail) playlistDecryption.refresh();
+    else documentDecryption.reset(content, preferences.reduced || !preferences.pageTextMask);
     pendingDetailFocus = true;
   },
   hideMenu: (done) => {
@@ -2110,8 +2111,9 @@ const onlineSearch = new OnlineMusicSearch((track, queue) => {
   queueActivated = true;
   browseLibraryDuringPlayback = true;
   if (!playerState.queue.length) queueSource = origin;
-  void player.replaceCurrent(track, origin);
-  closePanel();
+  void player.replaceCurrent(track, origin).then(() => {
+    closePanel(() => void locatePlayingTrack());
+  });
 }, platformLogins[activeProvider], track => { void playlistManager.open(track.onlineSource!.provider, { track }); }, track => {
   const source = rememberSearchShelf();
   enqueueNext(track, { type: 'search', name: source.name, provider: source.provider });
@@ -2195,6 +2197,21 @@ async function openQueueSource() {
   }
   queueReturn = { kind: 'library', albumId: origin?.type === 'album' ? origin.id : track?.albumId };
   await returnQueueBrowse();
+}
+let locatePlayingEpoch = 0;
+async function locatePlayingTrack() {
+  const epoch = ++locatePlayingEpoch, track = playerState.currentTrack;
+  if (!track) return;
+  const key = queueEntryKey(track);
+  playlistDetailEpoch++; playlistList?.destroy(); playlistList = undefined; playlistDetail = undefined;
+  const origin = track.queueEntry?.origin ?? track.queueOrigin;
+  if (origin?.type === 'search') {
+    const source = searchShelves.get(`${origin.provider}:${origin.name}`) ?? {tracks:[track],name:origin.name,provider:origin.provider};
+    await showSearchShelf(source, Math.max(0,source.tracks.findIndex(item=>item.id===track.id)));
+  } else await showQueueShelf();
+  if (epoch !== locatePlayingEpoch || queueEntryKey(playerState.currentTrack) !== key) return;
+  const index = records.findIndex(record => record.album?.playback?.entryId === key || record.album?.tracks[0]?.id === track.id);
+  if (index >= 0) select(index, undefined, true);
 }
 function updateQueueControls() {
   stage.dataset.queueView = String(queueView);
@@ -3003,7 +3020,7 @@ document.addEventListener("click", (e) => {
       });
       break;
     case "locate-playing": {
-      if (queueView || searchShelfActive || playerState.currentTrack?.queueEntry) { closePanel(() => void openQueueSource()); break; }
+      if (queueView || searchShelfActive || playerState.currentTrack?.queueEntry || playerState.currentTrack?.queueOrigin?.type === 'search') { closePanel(() => void locatePlayingTrack()); break; }
       if (accountActive && playlistPlaybackId) {
         const row = playlistLibrary.playlists.findIndex(playlist => playlist.id === playlistPlaybackId);
         const album = playlistLibrary.albums().find(album => album.playlistCell?.playlistId === playlistPlaybackId && album.tracks[0]?.id === playerState.currentTrack?.id);
