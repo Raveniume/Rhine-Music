@@ -12,8 +12,8 @@ let server,browser,page,child;
 if(desktop) {
   child=spawn(path.resolve(desktop),[],{windowsHide:true,stdio:'ignore',env:{...process.env,
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:'--remote-debugging-port=9336 --mute-audio',
-    WEBVIEW2_USER_DATA_FOLDER:path.resolve('artifacts/current-native-profile'),
-    RHINE_DESKTOP_DATA_DIR:path.resolve('artifacts/current-native-data')}});
+    WEBVIEW2_USER_DATA_FOLDER:path.resolve(`artifacts/current-native-profile-${process.pid}`),
+    RHINE_DESKTOP_DATA_DIR:path.resolve(`artifacts/current-native-data-${process.pid}`)}});
   try {
     for(let i=0;i<100&&!browser;i++) {
       if(child.exitCode!==null)throw Error('Desktop exited before WebView initialization');
@@ -114,9 +114,12 @@ try {
   report.wheel=frames;
   await page.locator('#selection-genre').click();
   await page.locator('[aria-label="歌单歌曲列表"]').waitFor({state:'visible'});
-  assert.equal(await page.locator('[data-playlist-detail-track]').count(),50);
-  await page.locator('[data-action="playlist-detail-next"]').click();
-  await page.locator('[data-playlist-detail-track="50"]').waitFor();
+  assert.equal(await page.locator('.playlist-detail-tools').count(),0);
+  assert.ok(await page.locator('[data-playlist-detail-track]').count()<40,'Full playlist keeps a bounded visible row pool');
+  await page.locator('#album-detail-content').evaluate(n=>n.scrollTop=n.scrollHeight);
+  await page.locator('[data-playlist-detail-track="119"]:not([disabled])').waitFor();
+  report.continuousPlaylist=true;
+  await page.locator('#album-detail-content').evaluate(n=>n.scrollTop=0);
   await page.screenshot({path:`${output}/playlist-detail.png`});
   await page.locator('.music-back').click();await page.waitForTimeout(1000);
   await page.locator('.music-view-toggle').click();await page.waitForTimeout(1500);
@@ -147,8 +150,8 @@ try {
     const at=Date.now();await page.locator('[data-overview-playlist-open]').filter({hasText:'合成歌单'}).first().click();
     await page.locator('[aria-label="歌单歌曲列表"]').waitFor({state:'visible'});
     const elapsed=await page.evaluate(()=>performance.now()-window.qaActionAt);assert.ok(elapsed<650,`Playlist entrance ${elapsed}ms`);
-    await page.waitForTimeout(1700);
-    assert.equal(await page.locator('#album-detail-content > h1 .document-redaction-window').count(),0);
+    // A slow frame must not stretch the text-mask timeline.
+    await page.locator('#album-detail-content > h1 .document-redaction-window').waitFor({state:'detached', timeout:1800});
     assert.equal(await page.evaluate(()=>{window.watchMini=false;return window.miniHiddenFrames;}),0,'Mini lyrics stay continuous across archive/overview/playlist');
     report.repeatedPlaylistOpen.push(elapsed);
     if(cycle===2){

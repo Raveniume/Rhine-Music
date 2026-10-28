@@ -178,14 +178,6 @@
 }
 .music-app[data-layout="portrait"] .music-detail:has(#song-view)::before { inset-block-start: 34%; }
 .music-app[data-layout="portrait"] .music-detail:has(#song-view) .card-caption { top: calc(38% - 52px); }
-.playlist-detail-tools { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: 18px; padding: 13px 0; border-block: 1px solid var(--line); }
-.playlist-detail-tools > strong { min-width: 0; }
-.playlist-detail-tools > span { min-width: 3.5em; text-align: center; font-variant-numeric: tabular-nums; }
-.playlist-detail-tools > button { min-width: 4em; text-align: center; }
-.playlist-detail-tools ~ .track-list .track-row { padding-block: 8px; }
-.playlist-detail-tools ~ .track-list .track-name small { margin-top: 3px; }
-.playlist-detail-tools ~ .track-list .track-name strong { font-size: 13px; }
-.playlist-detail-tools ~ .track-list .track-name small { font-size: 10px; }
 .about-github-link { border: 1px solid var(--line); padding: 8px 12px; }
 .update-confirm-scrim { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 24px; background: rgba(4, 10, 18, .48); backdrop-filter: blur(12px); }
 .update-confirm-dialog { width: min(460px, 100%); box-sizing: border-box; padding: 28px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); box-shadow: 0 24px 70px rgba(0,0,0,.28); }
@@ -195,12 +187,6 @@
 .update-confirm-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:24px; }
 .update-confirm-actions button { min-height:36px; padding:8px 14px; border:1px solid var(--line); background:transparent; color:var(--ink); }
 .update-confirm-actions .primary-button { border-color:var(--ink); background:var(--ink); color:var(--page-bg); }
-@media (min-width: 900px) {
-  .playlist-detail-tools ~ .track-list .track-row { padding-block: 7px; }
-}
-.playlist-detail-tools { grid-template-columns: minmax(0, 1fr) 5.5em 3.5em 5.5em; gap: 10px; min-height: 38px; padding: 4px 0; }
-.playlist-detail-tools > button, .playlist-detail-tools > span { height: 34px; display:inline-flex; align-items:center; justify-content:center; }
-.playlist-detail-tools ~ .track-list .track-row { padding-block: 6px; }
 .music-detail:has(#song-view) .detail-overline { font-size: 12px; letter-spacing: 1.2px; }
 .music-detail:has(#song-view) > #album-detail-content > .detail-artist { font-size: 16px; line-height:1.45; }
 .music-detail:has(#song-view) .song-view-heading { min-height: 28px; }
@@ -208,10 +194,15 @@
 #song-view .song-add-playlist { height: 28px; min-height: 28px; padding-block: 2px; }
 
 .music-detail:has(#song-view) .detail-overline .detail-breadcrumb { font-size: inherit; line-height: inherit; }
-.playlist-detail-tools + [role="status"]:empty { display: none; }
-.playlist-detail-tools > button { padding: 0; margin: 0; line-height: 1; }
-.playlist-detail-tools ~ .track-list .track-name strong { font-size: 14px; }
-.playlist-detail-tools ~ .track-list .track-name small { font-size: 11px; }
 
 .music-app.no-text-masks .document-redaction-window,
 .music-app.no-text-masks [data-song-reveal]::after { display: none; }
+
+.playlist-continuous-list { position:relative; border-top:1px solid var(--line); margin-top:20px; }
+.playlist-continuous-row { position:absolute; left:0; right:0; height:52px; }
+.playlist-continuous-list .track-row { box-sizing:border-box; width:100%; height:52px; padding-block:6px; }
+.playlist-continuous-list .track-name strong { font-size:14px; }
+.playlist-continuous-list .track-name small { font-size:11px; margin-top:3px; }
+.playlist-list-status:empty { display:none; }
+#song-view .song-add-playlist svg { width:16px; height:16px; flex:0 0 16px; }
+#song-lyrics { mask-image:linear-gradient(to bottom,transparent 0,#000 12px,#000 calc(100% - 48px),transparent 100%); }

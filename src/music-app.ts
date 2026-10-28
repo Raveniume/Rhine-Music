@@ -26,6 +26,7 @@ import { MusicPlaybackShortcuts } from './music-playback-shortcuts';
 import { normalizeKeybindings, keybindingsMarkup, mountKeybindingEditor, type MusicKeybindings } from './music-keybindings';
 import { LyricSettingsPreview } from './lyric-settings-preview';
 import { MusicSongView } from './music-song-view';
+import { MusicPlaylistList } from './music-playlist-list';
 import { mountTransportVolume, transportVolumeMarkup } from './music-volume-control';
 import { normalizeMusicArrayMode, type MusicArrayMode } from "./music-array-layout";
 import { DocumentDecryption } from "./document-decryption";
@@ -558,7 +559,7 @@ const documentDecryption = new DocumentDecryption(
   "h1, .detail-overline > span, .detail-artist, .album-facts small, .album-facts span, .track-name strong, .album-about p",
   0.35,
 );
-const playlistDecryption = new DocumentDecryption("h1, .detail-overline > span, .detail-artist", 0);
+const playlistDecryption = new DocumentDecryption("h1, .detail-overline > span, .detail-artist, .playlist-continuous-row .track-number, .playlist-continuous-row strong, .playlist-continuous-row small, .playlist-continuous-row .track-duration", 0);
 const tabTransition = new ContentTransition();
 const detailTransition = new SurfaceTransition(
   $("#music-detail"),
@@ -582,20 +583,21 @@ const overviewUI = new MusicOverviewUI($("#music-overview"), $("#overview-column
   (lane, first) => void loadOverviewPlaylist(lane, first));
 let detailIdentity = "",
   pendingDetailFocus = false;
-let playlistDetail: { row: number; offset: number; loading: boolean; error: string } | undefined;
+let playlistList: MusicPlaylistList | undefined;
+let playlistDetail: { row: number; loading: boolean; error: string } | undefined;
 let playlistDetailEpoch = 0;
-async function openPlaylistDetail(row: number, offset = 0) {
+async function openPlaylistDetail(row: number) {
   const playlist = playlistLibrary.playlists[row];
   if (!playlist || !accountActive) return;
   const samePlaylist = playlistDetail?.row === row && !overview && presentation.openingOrDetail;
   const epoch = ++playlistDetailEpoch, key = accountKey;
   if (overview) setOverview(false, false);
-  playlistDetail = { row, offset, loading: true, error: '' };
+  playlistDetail = { row, loading: true, error: '' };
   // Paint the playlist shell immediately. The 3D selection and remote page
   // fetch continue in parallel, so the detail surface never waits on camera
   // settling before showing useful content.
   renderDetail();
-  const navigation = samePlaylist ? Promise.resolve() : navigatePlaylist(row, offset);
+  const navigation = samePlaylist ? Promise.resolve() : navigatePlaylist(row, 0);
   if (!presentation.openingOrDetail) presentation.open();
   // The playlist is a readable list while the shelf camera is still moving.
   // Do not make opening it depend on the physical cover's readiness gate.
@@ -606,7 +608,7 @@ async function openPlaylistDetail(row: number, offset = 0) {
   $('#music-detail').inert = !!panel;
   $('#music-detail').setAttribute('aria-hidden', 'false');
   $('#album-detail-content').inert = false;
-  try { await playlistLibrary.ensure(row, offset, true); }
+  try { await playlistLibrary.ensure(row, 0, true); }
   catch (error) { if (epoch === playlistDetailEpoch && playlistDetail) playlistDetail.error = (error as Error).message; }
   void navigation;
   if (epoch !== playlistDetailEpoch || key !== accountKey || !playlistDetail) return;
@@ -614,28 +616,38 @@ async function openPlaylistDetail(row: number, offset = 0) {
   renderDetail();
 }
 function renderPlaylistDetail() {
-  const detail = playlistDetail!;
-  const playlist = playlistLibrary.playlists[detail.row];
+  const detail = playlistDetail!, playlist = playlistLibrary.playlists[detail.row];
   if (!playlist) return;
   songView.setVisible(false);
   const content = $('#album-detail-content');
-  const samePlaylist = detailIdentity === `playlist:${playlist.id}` && !!content.querySelector('.playlist-detail-tools');
-  const samePage = samePlaylist && content.dataset.playlistOffset === String(detail.offset);
-  const previousScroll = samePage ? content.scrollTop : 0;
-  detailIdentity = `playlist:${playlist.id}`;
-  const tracks = Array.from({ length: Math.min(50, Math.max(0, playlist.trackCount - detail.offset)) }, (_, index) => {
-    const position = detail.offset + index, track = playlistLibrary.track(detail.row, position);
-    return `<button class="track-row" data-playlist-detail-track="${position}" ${!track ? 'disabled' : ''}><span class="track-number">${String(position + 1).padStart(2, '0')}</span><span class="track-name"><strong>${esc(track?.title || (detail.loading ? '正在读取…' : '歌曲不可用'))}</strong><small>${esc(track?.artist || '')}</small></span><span class="track-duration">${track ? time(track.duration) : ''}</span></button>`;
-  }).join('');
+  const samePlaylist = detailIdentity === `playlist:${playlist.id}` && !!content.querySelector('.playlist-continuous-list');
   if (!samePlaylist) {
-    content.innerHTML = `<div class="detail-overline"><span>PLAYLIST ${String(detail.row + 1).padStart(3, '0')}</span><span>${esc(musicPlatforms[activeProvider])}</span></div><h1>${esc(playlist.name)}</h1><p class="detail-artist">${playlist.trackCount} 首歌曲 · ${playlist.owned ? '创建的歌单' : '收藏的歌单'}</p><div class="playlist-detail-tools"></div><p role="status"></p><div class="track-list" aria-label="歌单歌曲列表"></div>`;
-  }
-  content.dataset.playlistOffset = String(detail.offset);
-  content.querySelector('.playlist-detail-tools')!.innerHTML = `<strong>歌单曲目</strong>${playlist.trackCount > 50 ? `<button class="text-button" data-action="playlist-detail-prev" ${detail.offset === 0 ? 'disabled' : ''}>上一页</button><span>${Math.floor(detail.offset / 50) + 1} / ${Math.ceil(playlist.trackCount / 50)}</span><button class="text-button" data-action="playlist-detail-next" ${detail.offset + 50 >= playlist.trackCount ? 'disabled' : ''}>下一页</button>` : ''}`;
+    playlistList?.destroy();
+    detailIdentity = `playlist:${playlist.id}`;
+    content.innerHTML = `<div class="detail-overline"><span>PLAYLIST ${String(detail.row + 1).padStart(3, '0')}</span><span>${esc(musicPlatforms[activeProvider])}</span></div><h1>${esc(playlist.name)}</h1><p class="detail-artist">${playlist.trackCount} 首歌曲 · ${playlist.owned ? '创建的歌单' : '收藏的歌单'}</p><p class="playlist-list-status" role="status"></p><div class="track-list" aria-label="歌单歌曲列表"></div>`;
+    content.scrollTop = 0;
+    const current = () => playlistDetail?.row === detail.row && detailIdentity === `playlist:${playlist.id}`;
+    playlistList = new MusicPlaylistList(content, content.querySelector('.track-list')!, {
+      count: () => playlist.trackCount, revision: () => playlistLibrary.revision,
+      row: position => {
+        const track = playlistLibrary.track(detail.row, position);
+        return `<button class="track-row" data-playlist-detail-track="${position}" ${!track ? 'disabled' : ''}><span class="track-number">${String(position + 1).padStart(2, '0')}</span><span class="track-name"><strong>${esc(track?.title || '正在读取…')}</strong><small>${esc(track?.artist || '')}</small></span><span class="track-duration">${track ? time(track.duration) : ''}</span></button>`;
+      },
+      changed: () => { if (samePlaylist || playlistList) playlistDecryption.refresh(); },
+      load: (first, last) => {
+        const pages: Promise<void>[] = [];
+        for (let offset = Math.floor(first / 50) * 50; offset <= last; offset += 50) pages.push(playlistLibrary.ensure(detail.row, offset, true));
+        void Promise.all(pages).then(() => {
+          if (current()) playlistList?.render();
+        }).catch(error => {
+          if (current()) content.querySelector('[role="status"]')!.textContent = (error as Error).message;
+        });
+      },
+    });
+  } else playlistList?.render();
   content.querySelector('[role="status"]')!.textContent = detail.error;
-  content.querySelector('.track-list')!.innerHTML = tracks || '<p>这个歌单还没有歌曲。</p>';
-  content.scrollTop = previousScroll;
 }
+
 const trackFocus = new MusicTrackFocus();
 let pendingTrackReveal: { albumId: string; trackId: string } | undefined;
 function cancelTrackReveal() {
@@ -666,7 +678,7 @@ const presentation = new MusicPresentation({
     effects.play("open");
   },
   returnCamera: () => {
-    playlistDetail = undefined; playlistDetailEpoch++;
+    playlistList?.destroy(); playlistList = undefined; playlistDetail = undefined; playlistDetailEpoch++;
     scene?.setMode("archive");
     effects.setScene("archive");
     effects.play("back");
@@ -1964,7 +1976,7 @@ async function playPlaylistAt(row: number, song: number) {
 async function openPlaylistSongDetail(row: number, song: number) {
   await navigatePlaylist(row, song);
   if (frameDisposed || !accountActive) return;
-  playlistDetail = undefined;
+  playlistList?.destroy(); playlistList = undefined; playlistDetail = undefined;
   playlistDetailEpoch++;
   setMode('detail');
   renderDetail();
@@ -2034,7 +2046,7 @@ function onlineAccountChanged(provider: MusicProvider, account: NeteaseAccount) 
   $('#my-playlists-button').hidden = !account.loggedIn;
   const nextKey = account.loggedIn ? `${provider}:${account.profile?.userId || account.profile?.nickname || provider}` : '';
   if (nextKey === accountKey) return;
-  playlistDetail = undefined; playlistDetailEpoch++;
+  playlistList?.destroy(); playlistList = undefined; playlistDetail = undefined; playlistDetailEpoch++;
   playlistManager.dispose();
   together.invalidate();
   accountKey = nextKey; accountActive = account.loggedIn; playlistSelectionEpoch++; playlistPlayEpoch++; playlistNavigationTarget = undefined;
@@ -2049,8 +2061,10 @@ function onlineAccountChanged(provider: MusicProvider, account: NeteaseAccount) 
   if (accountActive) {
     accountView = true; followedPlaylistTrack = undefined;
     const key = accountKey;
-    accountLibraryPreparation = playlistLibrary.load().then(async () => {
-      if (key === accountKey && accountActive && accountView) await playlistLibrary.window(0, 0);
+    accountLibraryPreparation = playlistLibrary.load().then(() => {
+      // The selected page is ready after load(); neighbouring shelves can fill
+      // concurrently instead of holding the initial graphics preparation.
+      if (key === accountKey && accountActive && accountView) void playlistLibrary.window(0, 0);
     });
   } else {
     accountView = false; playlistLibrary.dispose(); clearTimeout(playlistRenderTimer); playlistPlaybackId = undefined;
@@ -2885,10 +2899,6 @@ document.addEventListener("click", (e) => {
       else if (currentAlbum()) presentation.open();
       break;
     }
-    case 'playlist-detail-prev':
-    case 'playlist-detail-next':
-      if (playlistDetail) void openPlaylistDetail(playlistDetail.row, Math.max(0, playlistDetail.offset + (action.endsWith('prev') ? -50 : 50)));
-      break;
     case 'play-queue':
       closePanel(() => void showQueueShelf());
       break;
@@ -3585,6 +3595,7 @@ function resumePage() {
   if (ready) void loadLibrary();
 }
 function disposePage() {
+  playlistList?.destroy(); playlistList = undefined;
   loadingOpening?.dispose();
   disposeVisualizerColor?.(); disposeVisualizerColor = undefined;
   disposeKeybindingEditor?.(); disposeKeybindingEditor = undefined;
@@ -3700,7 +3711,7 @@ async function start() {
     scene.setReduced(preferences.reduced);
     await yieldStartupFrame();
     if (frameDisposed) return;
-    await startup.run("renderer", () => scene!.prepareMusicRenderer(startupSceneEnabled), 45000);
+    await startup.run("renderer", () => scene!.prepareMusicRenderer(startupSceneEnabled, firstInstalledLaunch ? 20000 : 1200), 45000);
     if (frameDisposed) return;
     // Browser playback does not need a Swift compiler at startup. A saved
     // native output is restored after graphics preparation; otherwise discover

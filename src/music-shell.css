@@ -29,6 +29,8 @@
 .playlist-song-bars-track > .playlist-song-bar { position: absolute; top: 0; width: var(--song-bar-step); height: 100%; padding: 0; border: 0; background: transparent; color: inherit; }
 .playlist-song-bar::before { content: ''; position: absolute; width: 3px; height: 10px; left: 50%; top: 50%; transform: translate(-50%, -50%); background: var(--ink); opacity: .28; transition: height .15s, opacity .15s; }
 .playlist-song-bar.active::before, .playlist-song-bar:is(:hover, :focus)::before { height: var(--song-bar-height); opacity: 1; }
+.playlist-song-bar.major:not(.active)::before { height: 15px; opacity:.48; }
+.playlist-song-position { position:absolute; top:calc(100% + 5px); left:0; width:100%; text-align:center; font-size:10px; font-variant-numeric:tabular-nums; color:var(--muted); pointer-events:none; }
 .playlist-song-bar:is(:hover, :focus)::before { background: var(--accent); }
 .playlist-song-bar:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
 .playlist-song-bars-label { position: absolute; bottom: calc(100% + 12px); transform: translateX(-50%); max-width: min(260px, 65vw); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: var(--ink); pointer-events: none; }

@@ -23,7 +23,10 @@ export function setupPlaylistSongBars(host: HTMLElement, options: SongBarsOption
   track.className = 'playlist-song-bars-track'; viewport.appendChild(track);
   const label = document.createElement('span');
   label.className = 'playlist-song-bars-label'; label.hidden = true;
-  host.replaceChildren(viewport, label); host.setAttribute('role', 'group');
+  const positionLabel = document.createElement('span');
+  positionLabel.className = 'playlist-song-position'; positionLabel.setAttribute('aria-hidden', 'true');
+  host.replaceChildren(viewport, label, positionLabel); host.setAttribute('role', 'group');
+  let slide: Animation | undefined;
   let playlistId = '', total = 0, selected = -1, hovered = -1, focused = -1, step = 11;
   let pool: HTMLButtonElement[] = [], bars = new Map<number, HTMLButtonElement>(), labelEpoch = 0;
   let titleTimer: ReturnType<typeof setTimeout> | undefined;
@@ -73,6 +76,7 @@ export function setupPlaylistSongBars(host: HTMLElement, options: SongBarsOption
         bar.dataset.songBar = String(song); bar.setAttribute('aria-label', `第 ${song + 1} 首歌曲`);
       }
       bar.style.left = `${song * step}px`; bar.classList.toggle('active', song === selected);
+      bar.classList.toggle('major', (song + 1) % 5 === 0);
       bar.setAttribute('aria-current', String(song === selected)); bar.tabIndex = song === selected ? 0 : -1;
       next.set(song, bar);
     }
@@ -157,12 +161,25 @@ export function setupPlaylistSongBars(host: HTMLElement, options: SongBarsOption
         track.style.width = `${total * step}px`;
       }
       const next = total ? Math.min(total - 1, Math.max(0, song)) : -1;
-      if (next !== selected || changed) { selected = next; centerOn(selected); showTitle(); }
+      if (next !== selected || changed) {
+        const previous = selected, scrollBefore = viewport.scrollLeft;
+        selected = next; centerOn(selected); showTitle();
+        positionLabel.textContent = total ? `${selected + 1} / ${total}` : '';
+        slide?.cancel();
+        const displacement = viewport.scrollLeft - scrollBefore;
+        if (!changed && !reduced && previous >= 0 && displacement) {
+          // Rebase the finite pool immediately, then show the actual movement.
+          // The selected line slides with its neighbours instead of teleporting.
+          const distance = Math.sign(displacement) * Math.min(Math.abs(displacement), step * 3);
+          slide = track.animate([{transform:`translateX(${distance}px)`}, {transform:'translateX(0)'}],
+            {duration:180, easing:'cubic-bezier(.22,1,.36,1)'});
+        }
+      }
       else if (!host.hidden) {
         const cached = options.cachedTitle?.(playlistId, labelSong());
         if (cached && label.textContent !== cached) showTitle();
       }
     },
-    destroy() { clearTimeout(titleTimer); labelEpoch++; resize.disconnect(); events.abort(); resetWheel(); },
+    destroy() { slide?.cancel(); clearTimeout(titleTimer); labelEpoch++; resize.disconnect(); events.abort(); resetWheel(); },
   };
 }

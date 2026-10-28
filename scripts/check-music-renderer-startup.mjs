@@ -72,6 +72,8 @@ function fixture({ dirtyTiles = 432, compileGate, coverGate, music = true, loade
     },
     dispose() { calls.push("covers.dispose"); },
   };
+  let target = null;
+  const buffer = {};
   const instance = {
     async prepareIntroCovers() { calls.push('intro-covers'); },
     disposed: false, loaded, model, scene, camera, covers: coverState, coverPriority: Array.from({length: 432}, (_, i) => i),
@@ -79,9 +81,12 @@ function fixture({ dirtyTiles = 432, compileGate, coverGate, music = true, loade
     returningPool: { invalidate: () => calls.push("returningPool.dispose") },
     light: { shadow: { dispose: () => calls.push("shadow.dispose") } },
     renderer: {
+      getRenderTarget: () => target,
+      setRenderTarget: value => { target = value; },
       async compileAsync(actualScene, actualCamera) {
         assert.equal(actualScene, scene); assert.equal(actualCamera, camera);
         assert.equal(model.visible, true, "The selected model participates in compilation even when it was hidden");
+        assert.equal(target, buffer, "Compile the linear composer variant actually used by the main draw");
         calls.push("compile");
         if (compileGate) await compileGate.promise;
       },
@@ -92,6 +97,7 @@ function fixture({ dirtyTiles = 432, compileGate, coverGate, music = true, loade
       domElement: { remove: () => calls.push("canvas.remove") },
     },
     composer: {
+      readBuffer: buffer,
       passes: Array.from({ length: 5 }, (_, index) => ({ dispose() { calls.push(`pass${index}.dispose`); } })),
       render: () => calls.push("draw"),
       dispose: () => calls.push("composer.dispose"),
@@ -142,6 +148,7 @@ assert.deepEqual(cold.calls[0], ["pose", false, 27.12], "The first pose setup pe
 assert.deepEqual(cold.calls.filter(call => Array.isArray(call) && call[0] === "prepareVisible"), [["prepareVisible", 1200]]);
 assert.equal(cold.instance.model.visible, false, "Compilation restores the model's original visibility");
 assert.deepEqual(cold.calls.at(-1), ["mode", "hidden"], "Prewarm returns the scene to its hidden opening pose");
+assert.match(source, /shadowMap.type = THREE.PCFShadowMap;/, "Use the active r183 shadow mode before compiling, avoiding a first-draw recompile");
 const diagnostics = JSON.parse(cold.instance.container.dataset.startupPreparation);
 assert.equal(diagnostics.glError, 0);
 assert.equal(diagnostics.parallelCompile, true);

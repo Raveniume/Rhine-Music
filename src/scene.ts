@@ -233,7 +233,9 @@ export class ArchiveScene {
     this.gpuTiming = new GpuFrameTiming(this.renderer.getContext() as WebGL2RenderingContext);
     this.graphicsDevice = graphicsIdentity(this.renderer);
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // r183 converts PCFSoft to PCF on the first shadow draw. Choose the actual
+    // mode before precompilation so physical materials do not compile twice.
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.domElement.setAttribute(
@@ -2313,7 +2315,7 @@ export class ArchiveScene {
     }
   }
   /** Prepare artwork for every real cell the opening camera can expose. */
-  private async prepareIntroCovers(nextFrame: () => Promise<void>) {
+  private async prepareIntroCovers(nextFrame: () => Promise<void>, budgetMs = 20000) {
     const covers = this.covers;
     if (!covers) return;
     // The camera and wave expose different subsets of the same finite pool.
@@ -2326,7 +2328,7 @@ export class ArchiveScene {
     const prioritySlots = requests.map(request => request.slot);
     const started = performance.now();
     let turns = 0;
-    for (; turns < 1200 && performance.now() - started < 20000; turns++) {
+    for (; turns < 1200 && performance.now() - started < budgetMs; turns++) {
       if (this.disposed) return;
       covers.prepareFrame(requests, 6, 2);
       covers.flushUploads(this.renderer, 4, { prioritySlots, timeBudgetMs: 2,
@@ -2336,15 +2338,18 @@ export class ArchiveScene {
     }
     this.container.dataset.introCoverPreparation = JSON.stringify({
       ...covers.preparationState(requests), turns,
-      milliseconds: Math.round(performance.now() - started), windowMs: 20000,
+      milliseconds: Math.round(performance.now() - started), windowMs: budgetMs,
     });
   }
 
   /** Compile and populate the real pipeline while the loading surface is up.
    * The introduction's clock starts only after this resolves. */
-  async prepareMusicRenderer(introCovers = false) {
+  async prepareMusicRenderer(introCovers = false, introCoverBudgetMs = 20000) {
     if (!musicLibrary || !this.loaded || this.disposed) return;
     const started = performance.now();
+    const phases: { phase: string; milliseconds: number }[] = [];
+    const mark = (phase: string) => { phases.push({ phase, milliseconds: Math.round(performance.now() - started) }); };
+    mark("pose");
     const nextFrame = yieldStartupFrame;
     // The settled shot exercises both the instanced shelf and selected shell.
     const settled = { reveal: 1, lift: 0, zoom: 0, time: 27.12, musicIntro: true };
@@ -2352,19 +2357,29 @@ export class ArchiveScene {
     this.update(started / 1000, settled, false);
     const visible = this.model.visible;
     this.model.visible = true;
-    try { await this.renderer.compileAsync(this.scene, this.camera); }
+    mark("compile");
+    const target = this.renderer.getRenderTarget();
+    try {
+      // Main materials render into the linear composer buffer, not the screen.
+      this.renderer.setRenderTarget(this.composer.readBuffer);
+      await this.renderer.compileAsync(this.scene, this.camera);
+    }
     finally {
+      if (!this.disposed) this.renderer.setRenderTarget(target);
       this.model.visible = visible;
     }
     if (this.disposed) return;
-    if (introCovers) await this.prepareIntroCovers(nextFrame);
+    mark("intro-covers");
+    if (introCovers) await this.prepareIntroCovers(nextFrame, introCoverBudgetMs);
     if (this.disposed) return;
+    mark("visible-covers");
     await this.covers?.prepareVisible(1200);
     // First-time transfers can stall inside the graphics driver. Never queue
     // 64 tiles / 16 MiB in one turn: input and settings get a turn between
     // strips (at most 4 tiles / 1 MiB, one transfer, soft 2 ms budget).
     // A cold cache cannot indefinitely postpone entry; normal frames finish
     // any remaining work using the existing cover scheduler.
+    mark("uploads");
     const uploadStarted = performance.now();
     let uploadTurns = 0;
     for (; uploadTurns < 120 && this.covers && this.covers.getStats().dirtyTiles &&
@@ -2378,15 +2393,18 @@ export class ArchiveScene {
     }
     // Real draws initialize transmission, shadow, AO and depth-of-field targets.
     // They cannot be warmed by compiling the main scene's materials alone.
+    mark("draws");
     for (const pose of [settled, opening]) {
       if (this.disposed) return;
       this.update(performance.now() / 1000, pose);
       await nextFrame();
     }
     if (this.disposed) return;
+    mark("done");
     this.setMode("hidden");
     this.container.dataset.startupPreparation = JSON.stringify({
       milliseconds: Math.round(performance.now() - started),
+      phases,
       parallelCompile: this.renderer.extensions.has("KHR_parallel_shader_compile"),
       glError: this.renderer.getContext().getError(),
       covers: this.covers?.getStats(),

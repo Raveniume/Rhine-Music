@@ -48,8 +48,8 @@ function fixture({ renderScene = true, firstMs = 0, reduced = false, speed = 1, 
   const pending = new Map(), elements = new Map();
   const calls = { scene: 0, boot: 0, viewer: 0, presentation: 0, library: 0, playlistRebuilds: 0, clearTimeout: [],
     decryption: [], dispose: { scene: 0, boot: 0, overview: 0, player: 0, effects: 0, trackFocus: 0 } };
-  const document = { ...eventTarget(), hidden: false }, window = eventTarget();
-  const scene = { update: () => calls.scene++, musicPresentationPhase: 'archive',
+    const document = { ...eventTarget(), hidden: false }, window = eventTarget();
+  const scene = { update: () => calls.scene++, resetMotionClock: () => {}, musicPresentationPhase: 'archive',
     getStats: () => ({ drawCalls: 12, triangles: 1000 }), dispose: () => calls.dispose.scene++ };
   const boot = { active: true, result: { renderScene, cinema: { time: 21.92 } },
     update: () => { calls.boot++; return boot.result; }, dispose: () => calls.dispose.boot++ };
@@ -65,21 +65,23 @@ function fixture({ renderScene = true, firstMs = 0, reduced = false, speed = 1, 
   const compiled = new Function('document', 'window', 'scene', 'boot', 'viewer', 'presentation', '$',
     'requestAnimationFrame', 'cancelAnimationFrame', 'MusicFrameTiming', 'config', 'calls', 'appVersion', `
     const performance = { now: () => config.cpuNow() };
-    const preferences = { reduced: config.reduced, theme: 'day' }, themeNames = { day: '暖昼' };
+    const preferences = { reduced: config.reduced, theme: 'day', frameLimit: 60 }, themeNames = { day: '暖昼' };
     let nativeHidden = false;
-    const renderScheduler = { shouldRender: () => true, reset() {} };
+    const renderScheduler = { shouldRender: () => true, reset() {} }, useRenderScheduler = false, frameLimit = 60;
     const isDesktop = () => false, location = { search: '' };
     const stage = { dataset: {} }, getMusicMotionSpeed = () => config.speed;
     const updateOverview = () => {}, overviewRevealPending = false, overview = false;
     const overviewUI = { dispose: () => calls.dispose.overview++ };
     const showBrowseSurface = () => {}, documentDecryption = { update: time => calls.decryption.push(time) };
+    const playlistDetail = undefined, playlistDecryption = { update() {} }, panel = undefined;
+    let playlistList;
     const songView = { setVisible() {}, dispose() {} };
     const visualizer = { setHidden() {}, dispose() {} }, titleMotion = {setRapid(){}}, tryEnterPlaylistOverview = () => {};
     const together = {dispose(){}}, playlistManager = {dispose(){}}, onlineDebug = {dispose(){}}, lyricSettingsPreview = {dispose(){}};
     let disposeKeybindingEditor, disposeVisualizerColor, queueViewUI, loadingOpening;
     const playlistSongBars = {destroy(){}}, keyboardPlayback = {cancel(){}}, playbackShortcuts = {dispose(){},cancel(){}}, startup = {cancel(){}}, transportVolume = { dispose() {} };
     const disposePlatformLogin = () => {}, displayVersion = appVersion;
-    const pendingDetailFocus = false, pendingTrackReveal = undefined, panel = undefined;
+    const pendingDetailFocus = false, pendingTrackReveal = undefined;
     let playlistRefreshDeferred = false;
     const accountActive = true, accountView = true, rebuildPlaylistGrid = () => { calls.playlistRebuilds++; };
     const pollTimer = 17, toastTimer = 18, clearTimeout = id => calls.clearTimeout.push(id);
@@ -88,7 +90,7 @@ function fixture({ renderScene = true, firstMs = 0, reduced = false, speed = 1, 
     const onlineSearch = { dispose() {} }; let playbackVisualGeneration = 0;
     const playlistLibrary = { dispose() {} }, playlistRenderTimer = 19;
     let playlistPlayEpoch = 0, playlistSelectionEpoch = 0;
-    const effects = { dispose: () => calls.dispose.effects++ };
+    const effects = { setHidden() {}, dispose: () => calls.dispose.effects++ };
     const trackFocus = { cancel: () => calls.dispose.trackFocus++ };
     let ready = config.ready;
     ${compiledCode}
@@ -164,14 +166,14 @@ for (let index = 1; index <= 300; index++) {
   hidden.next(300050 + index * 1000 / 60);
 }
 
-const bounded = fixture({ speed: 3 });
-bounded.presentation.phase = 'detail';
-bounded.next(300000);
-assert.ok(Math.abs(bounded.state().textMotionTime - .15) < 1e-9, 'A visible stall contributes at most 50 ms, with speed applied once');
-assert.equal(bounded.calls.decryption.length, 1);
+const elapsed = fixture({ speed: 3 });
+elapsed.presentation.phase = 'detail';
+elapsed.next(100);
+assert.ok(Math.abs(elapsed.state().textMotionTime - .3) < 1e-9, 'A 10 FPS frame advances the full elapsed time, with speed applied once');
+assert.equal(elapsed.calls.decryption.length, 1);
 const reduced = fixture({ speed: 3, reduced: true });
-reduced.next(300000);
-assert.equal(reduced.state().textMotionTime, .05, 'Reduced motion does not multiply the text clock');
+reduced.next(100);
+assert.equal(reduced.state().textMotionTime, .1, 'Reduced motion does not multiply the text clock');
 
 const cache = fixture();
 cache.window.dispatch('pagehide', { persisted: true });
@@ -294,9 +296,11 @@ function startupFixture({ waitAt, native = false, hidden = false } = {}) {
   };
   const compiled = new Function('wait', 'calls', 'pending', '$', 'native', 'hidden', 'MusicStartup', `
     const navigator = {}, document = { hidden, querySelectorAll: () => [], fonts: { load: async () => {} } };
+    const consumeFirstLaunch = async () => false;
+    const setTimeout = () => 1;
     const startup = new MusicStartup(), prepareStartupExtras = async () => {}, yieldStartupFrame = async () => {};
     const detectAutomaticQuality = () => {}, savePrefs = () => {}, nativeHidden = false, panel = null;
-    const activeProvider = 'netease', platformLogins = {netease: {status: async () => {}}};
+    const activeProvider = 'netease', platformLogins = {netease: {status: async () => {}}}, isDesktop = () => native;
     const prepareOpeningLibrary = async () => {}, accountActive = false, accountView = false;
     const preferences = { arrayMode: 'realistic', theme: 'day', reduced: false, audioBackend: native ? 'coreaudio' : 'browser' };
     const lightingLab = false, location = { search: '' }, selected = 7, sortLabel = { column: '歌手' }, renderQuality = 1;
@@ -316,6 +320,7 @@ function startupFixture({ waitAt, native = false, hidden = false } = {}) {
       async load(url, selection) { if (url !== undefined || selection !== 7) throw new Error('Selection must reach the single initial load'); await wait('model'); }
       prepareMusicRenderer() { return wait('prepare'); }
       showMusicArchiveImmediately() { calls.push('show-archive'); }
+      dispose() {}
     }
     ${productionFunction('start')}
     return { start, dispose: () => { frameDisposed = true; }, state: () => ({ ready, frameHandle }) };
@@ -365,9 +370,10 @@ function scanningStartupFixture() {
   const schedule = (callback, delay) => { const id = ++timerId; timers.set(id, { callback, delay }); return id; };
   const compiled = new Function('warm', 'warming', 'timers', 'pending', 'calls', 'request', '$', 'schedule', 'MusicStartup', `
     const navigator = {}, document = { hidden: false, querySelectorAll: () => [], fonts: { load: async () => {} } };
+    const consumeFirstLaunch = async () => false;
     const startup = new MusicStartup(), prepareStartupExtras = async () => {}, yieldStartupFrame = async () => {};
     const detectAutomaticQuality = () => {}, savePrefs = () => {}, nativeHidden = false;
-    const activeProvider = 'netease', platformLogins = {netease: {status: async () => {}}};
+    const activeProvider = 'netease', platformLogins = {netease: {status: async () => {}}}, isDesktop = () => false;
     const preferences = { arrayMode: 'realistic', sortMode: 'genre', theme: 'day', reduced: false, audioBackend: 'browser' };
     const lightingLab = false, lightingDemo = false, location = { search: '' }, sortLabel = { column: '流派' }, renderQuality = 1;
     const stage = { dataset: {}, classList: { toggle() {}, add() {} } };
@@ -400,6 +406,7 @@ function scanningStartupFixture() {
       async refreshLibrary() { calls.sceneRefreshes++; this.columnCount = records.length; }
       prepareMusicRenderer() { warming.resolve(); return warm.promise; }
       showMusicArchiveImmediately() {}
+      dispose() {}
     }
     ${productionFunction('albumWithoutCredits')}
     ${productionFunction('applyLibrary')}
