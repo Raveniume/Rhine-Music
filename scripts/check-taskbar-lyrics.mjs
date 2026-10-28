@@ -93,6 +93,15 @@ try {
   assert.ok(position.y>=layout.workHeight && position.y+size.height<=layout.screenHeight+1,JSON.stringify({position,size,layout}));
   report.layout=layout;
   assert.ok(Math.abs(size.width/layout.dpr-400)<1,'Compact taskbar width is 400 logical pixels');
+  if (process.env.RHINE_TASKBAR_SWITCH_MS) {
+    await main.evaluate(`window.__TAURI__.core.invoke('desktop_tray_action',{action:'show'})`);
+    console.log('Taskbar ready for foreground switching');
+    await sleep(Math.min(60000,Number(process.env.RHINE_TASKBAR_SWITCH_MS)));
+    const switched=JSON.parse(execFileSync('powershell.exe',['-NoProfile','-File',path.resolve('scripts/check-native-surface.ps1')],{encoding:'utf8',windowsHide:true}));
+    assert.equal(switched.lyricsUnoccluded,true); assert.equal(switched.mainNotForeground,true); report.afterForegroundSwitch=switched;
+    const shot=await taskbar.command('Page.captureScreenshot',{format:'png'});
+    await fs.writeFile(path.resolve('artifacts/desktop-ui/taskbar-after-switch.png'),Buffer.from(shot.data,'base64'));
+  }
   await main.evaluate(`window.__TAURI__.core.invoke('desktop_window_action',{action:'minimize'})`);
   await sleep(1200);
   assert.equal(await taskbar.evaluate(`window.__TAURI__.window.getCurrentWindow().isVisible()`),true,'Lyrics stay visible with main window minimized');

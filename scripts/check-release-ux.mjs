@@ -9,6 +9,20 @@ const desktop=process.env.RHINE_DESKTOP_EXE;
 const output = desktop ? 'artifacts/current-native-ux' : 'artifacts/current-ux';
 await fs.mkdir(output, {recursive:true});
 let server,browser,page,child;
+async function recordTransition() {
+  const cdp=await page.context().newCDPSession(page), frames=[], writes=[];
+  const dir=path.resolve(output,'playlist-transition'); await fs.mkdir(dir,{recursive:true});
+  cdp.on('Page.screencastFrame',event=>{
+    const name=String(frames.length).padStart(4,'0')+'.jpg';
+    frames.push({file:name,time:event.metadata.timestamp});
+    writes.push(fs.writeFile(path.join(dir,name),Buffer.from(event.data,'base64')));
+    void cdp.send('Page.screencastFrameAck',{sessionId:event.sessionId}).catch(()=>{});
+  });
+  await cdp.send('Page.startScreencast',{format:'jpeg',quality:85,maxWidth:1440,maxHeight:900,everyNthFrame:1});
+  return async()=>{await cdp.send('Page.stopScreencast');await Promise.all(writes);await cdp.detach();
+    await fs.writeFile(path.join(dir,'frames.json'),JSON.stringify(frames,null,2));
+    await fs.writeFile(path.join(dir,'frames.txt'),frames.map((f,i)=>`file '${f.file}'\nduration ${Math.max(.01,(frames[i+1]?.time??f.time+.08)-f.time)}`).join('\n')+'\n');};
+}
 if(desktop) {
   child=spawn(path.resolve(desktop),[],{windowsHide:true,stdio:'ignore',env:{...process.env,
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:'--remote-debugging-port=9336 --mute-audio',
@@ -59,8 +73,12 @@ try {
   if(desktop)await page.reload();else await page.goto(server.resolvedUrls.local[0]);
   await page.locator('.music-app').waitFor();
   if(desktop) await page.evaluate(()=>window.__TAURI__.core.invoke('desktop_tray_action',{action:'show'}));
-  await page.evaluate(()=>document.addEventListener('click',()=>{window.qaActionAt=performance.now();},true));
+  await page.evaluate(()=>document.addEventListener('click',()=>{
+    window.qaActionAt=performance.now();window.qaPlaylistFrameMs=undefined;
+    requestAnimationFrame(()=>{const p=document.querySelector('#album-detail-content');if(p?.querySelector('.playlist-continuous-list')&&p.getBoundingClientRect().width&&p.closest('#music-detail')?.getAttribute('aria-hidden')==='false')window.qaPlaylistFrameMs=performance.now()-window.qaActionAt;});
+  },true));
   await page.waitForFunction(()=>!document.querySelector('#music-loading'));
+  report.startup=await page.evaluate(()=>JSON.parse(document.querySelector('#three-scene').dataset.startupPreparation||'{}'));
   await page.locator('.music-boot-skip').waitFor({state:'visible'});
   assert.equal(await page.locator('.rhine-loading').count(),0,'Daily startup skips the full loading film');
   await page.locator('.music-boot-skip').click();
@@ -124,6 +142,7 @@ try {
   await page.locator('.music-back').click();await page.waitForTimeout(1000);
   await page.locator('.music-view-toggle').click();await page.waitForTimeout(1500);
   await page.screenshot({path:`${output}/overview.png`});
+  const stopRecording=await recordTransition();
   const openedAt=Date.now();
   await page.locator('[data-overview-playlist-open]').filter({hasText:'合成歌单'}).first().click();
   await page.locator('[aria-label="歌单歌曲列表"]').waitFor({state:'visible'});
@@ -133,10 +152,14 @@ try {
   // Opening a playlist must keep the mini player visible, and the early header
   // mask may finish once but must not restart when extraction settles.
   assert.equal(await page.locator('#mini-playback-below').isVisible(),true);
+  assert.ok(await page.locator('.playlist-continuous-row .document-redaction-window').count()>0,'Playlist rows participate in the entrance mask');
+  assert.equal(await page.locator('#music-overview').isVisible(),false,'Outgoing overview controls cannot overlap the incoming playlist');
   const header = await page.locator('#album-detail-content > h1').elementHandle();
   await page.waitForTimeout(1800);
   assert.equal(await header.evaluate(n=>n.isConnected),true,'Metadata refresh retains the revealed header');
   assert.equal(await page.locator('#album-detail-content > h1 .document-redaction-window').count(),0);
+  await stopRecording();
+  await page.locator('.music-topnav').screenshot({path:`${output}/statusbar-playlist.png`});
   report.repeatedPlaylistOpen=[];
   for(let cycle=0;cycle<3;cycle++) {
     await page.locator('.music-back').click();await page.waitForTimeout(1300);
@@ -149,7 +172,7 @@ try {
     await page.evaluate(()=>{window.miniHiddenFrames=0;window.watchMini=true;const f=()=>{if(!window.watchMini)return;if(document.querySelector('#mini-playback-below').hidden)window.miniHiddenFrames++;requestAnimationFrame(f);};f();});
     const at=Date.now();await page.locator('[data-overview-playlist-open]').filter({hasText:'合成歌单'}).first().click();
     await page.locator('[aria-label="歌单歌曲列表"]').waitFor({state:'visible'});
-    const elapsed=await page.evaluate(()=>performance.now()-window.qaActionAt);assert.ok(elapsed<650,`Playlist entrance ${elapsed}ms`);
+    const elapsed=await page.evaluate(()=>window.qaPlaylistFrameMs ?? performance.now()-window.qaActionAt);assert.ok(elapsed<650,`Playlist entrance ${elapsed}ms`);
     // A slow frame must not stretch the text-mask timeline.
     await page.locator('#album-detail-content > h1 .document-redaction-window').waitFor({state:'detached', timeout:1800});
     assert.equal(await page.evaluate(()=>{window.watchMini=false;return window.miniHiddenFrames;}),0,'Mini lyrics stay continuous across archive/overview/playlist');
@@ -164,7 +187,7 @@ try {
   const delayedAt=Date.now();
   await page.locator('[data-overview-playlist-open]').filter({hasText:'延迟歌单'}).first().click();
   await page.locator('[aria-label="歌单歌曲列表"]').waitFor({state:'visible'});
-  report.delayedPlaylistShellMs=await page.evaluate(()=>performance.now()-window.qaActionAt);
+  report.delayedPlaylistShellMs=await page.evaluate(()=>window.qaPlaylistFrameMs ?? performance.now()-window.qaActionAt);
   assert.ok(report.delayedPlaylistShellMs<650,'Playlist shell does not wait for the network');
   const delayedHeader=await page.locator('#album-detail-content > h1').elementHandle();
   assert.ok(await page.locator('#album-detail-content > h1 .document-redaction-window').count()>0,'Mask starts with initial zoom');

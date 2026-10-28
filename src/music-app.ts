@@ -591,7 +591,12 @@ async function openPlaylistDetail(row: number) {
   if (!playlist || !accountActive) return;
   const samePlaylist = playlistDetail?.row === row && !overview && presentation.openingOrDetail;
   const epoch = ++playlistDetailEpoch, key = accountKey;
-  if (overview) setOverview(false, false);
+  if (overview) {
+    setOverview(false, false);
+    // Detail text starts with the zoom. Retire the outgoing labels in that
+    // same paint, so the two pages never overlay their headings and controls.
+    overviewUI.finish();
+  }
   playlistDetail = { row, loading: true, error: '' };
   // Paint the playlist shell immediately. The 3D selection and remote page
   // fetch continue in parallel, so the detail surface never waits on camera
