@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { collectNativeLicenses } from './collect-native-licenses.mjs';
 if (process.platform !== 'darwin') throw Error('macOS signing and notarization require a Mac');
 const identity = process.env.APPLE_SIGNING_IDENTITY;
 const profile = process.env.RHINE_NOTARY_PROFILE;
@@ -19,12 +20,33 @@ await fs.mkdir(output); // Never overwrite a previously built release.
 run('npm', ['ci']);
 process.env.VITE_PUBLIC_RELEASE = '1';
 run('npm', ['run', 'desktop:prepare']);
+for (const restricted of ['desktop-runtime/bin', 'desktop-runtime/node_modules/node-nim']) {
+  if (await fs.stat(restricted).catch(() => null)) throw Error(`Remove optional private distribution components before building: ${restricted}`);
+}
+for (const file of ['PRIVACY.md', 'PLATFORM-NOTICE.md', 'LICENSE-AGPL-3.0-only']) await fs.copyFile(file, path.join('desktop-runtime', file));
+const rustTarget = arch === 'arm64' ? 'aarch64-apple-darwin' : 'x86_64-apple-darwin';
+run('cargo', ['fetch', '--manifest-path', 'src-tauri/Cargo.toml', '--target', rustTarget, '--locked']);
+await collectNativeLicenses(path.resolve('desktop-runtime/third-party/native'), root, rustTarget);
+await fs.writeFile('desktop-runtime/PUBLIC-PACKAGE.json', JSON.stringify({ version, platform: 'macos', arch, runtimeChecked: false }));
 const entitlements = path.resolve('src-tauri/entitlements-node.plist');
-// Node is nested executable code in Resources. Sign it before sealing the app.
+// Sign all nested Mach-O code, including transitive native .node modules,
+// before sealing the app. Only Node needs the JIT entitlement.
 const node = path.resolve('desktop-runtime/node.exe');
 await fs.chmod(node, 0o755);
-run('codesign', ['--force', '--sign', identity, '--timestamp', '--options', 'runtime', '--entitlements', entitlements, node]);
-run('codesign', ['--verify', '--strict', '--verbose=2', node]);
+const signedCode = [];
+async function signNested(directory) {
+  for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+    const file = path.join(directory, entry.name);
+    if (entry.isDirectory()) await signNested(file);
+    else if (entry.isFile() && run('file', ['-b', file], true).includes('Mach-O')) {
+      run('codesign', ['--force', '--sign', identity, '--timestamp', '--options', 'runtime', ...(file === node ? ['--entitlements', entitlements] : []), file]);
+      run('codesign', ['--verify', '--strict', '--verbose=2', file]);
+      signedCode.push(path.relative(path.resolve('desktop-runtime'), file));
+    }
+  }
+}
+await signNested(path.resolve('desktop-runtime'));
+if (!signedCode.includes('node.exe')) throw Error('Bundled Node is not a Mach-O executable');
 const iconset = path.join(output, 'rhine.iconset');
 await fs.mkdir(iconset);
 for (const size of [16, 32, 128, 256, 512]) {
@@ -68,5 +90,5 @@ run('xcrun', ['stapler', 'validate', dmg]);
 run('spctl', ['--assess', '--type', 'open', '--context', 'context:primary-signature', '--verbose=4', dmg]);
 const sha256 = createHash('sha256').update(await fs.readFile(dmg)).digest('hex');
 await fs.writeFile(dmg + '.sha256', `${sha256}  ${path.basename(dmg)}\n`);
-await fs.writeFile(path.join(output, 'verification.json'), JSON.stringify({ version, arch, sourceCommit: run('git', ['rev-parse', 'HEAD'], true).trim(), signed: true, notarized: true, gatekeeperChecked: true, runtimeChecked: false, sha256 }, null, 2));
+await fs.writeFile(path.join(output, 'verification.json'), JSON.stringify({ version, arch, sourceCommit: run('git', ['rev-parse', 'HEAD'], true).trim(), signedCode, signed: true, notarized: true, gatekeeperChecked: true, runtimeChecked: false, sha256 }, null, 2));
 console.log('Signing and Gatekeeper passed. Complete the fresh-download runtime checks in docs/MACOS-RELEASE.md before publication.');

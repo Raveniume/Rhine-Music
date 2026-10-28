@@ -5,10 +5,11 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 // Packaging metadata only: no application, network service or audio is started.
-export async function collectNativeLicenses(output, root = fileURLToPath(new URL('../', import.meta.url))) {
+export async function collectNativeLicenses(output, root = fileURLToPath(new URL('../', import.meta.url)), target = 'x86_64-pc-windows-msvc') {
+  if (!['x86_64-pc-windows-msvc', 'aarch64-apple-darwin', 'x86_64-apple-darwin'].includes(target)) throw new Error('Unsupported license target');
   const cargoHome = process.env.CARGO_HOME || path.join(os.homedir(), '.cargo');
   const cargo = path.join(cargoHome, 'bin', process.platform === 'win32' ? 'cargo.exe' : 'cargo');
-  const result = spawnSync(cargo, ['metadata', '--manifest-path', path.join(root, 'src-tauri/Cargo.toml'), '--locked', '--offline', '--filter-platform', 'x86_64-pc-windows-msvc', '--format-version', '1'], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+  const result = spawnSync(cargo, ['metadata', '--manifest-path', path.join(root, 'src-tauri/Cargo.toml'), '--locked', '--offline', '--filter-platform', target, '--format-version', '1'], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
   if (result.error || result.status !== 0) throw new Error(`Cannot collect locked native dependency metadata: ${result.error?.message || result.stderr}`);
   const metadata = JSON.parse(result.stdout);
   const active = new Set(metadata.resolve.nodes.map(node => node.id));
@@ -46,6 +47,6 @@ export async function collectNativeLicenses(output, root = fileURLToPath(new URL
     inventory.push({ name: dependency.name, version: dependency.version, license: dependency.license, repository: dependency.repository, noticeFiles: notices, sourceIncluded });
   }
   await fs.writeFile(path.join(output, 'DEPENDENCIES.json'), JSON.stringify(inventory, null, 2) + '\n');
-  await fs.writeFile(path.join(output, 'README.txt'), 'Native dependency notices for the locked Windows x64 build.\nIncludes runtime and build dependencies conservatively; this is not a claim that every dependency is linked into the executable.\nExact unmodified MPL-2.0 dependency sources are included under sources/. Each retains its original license.\nDEPENDENCIES.json contains versions, source repositories and applicable license identifiers. No local manifest paths are exported.\n');
+  await fs.writeFile(path.join(output, 'README.txt'), `Native dependency notices for the locked ${target} build.\nIncludes runtime and build dependencies conservatively; this is not a claim that every dependency is linked into the executable.\nExact unmodified MPL-2.0 dependency sources are included under sources/. Each retains its original license.\nDEPENDENCIES.json contains versions, source repositories and applicable license identifiers. No local manifest paths are exported.\n`);
   return inventory.length;
 }
