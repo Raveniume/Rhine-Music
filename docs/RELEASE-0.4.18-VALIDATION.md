@@ -12,3 +12,5 @@
 本机已安装的 0.4.16 不受代码修改影响；0.4.18 安装后才会使用新界面与安装提示。Mac 签名、公证和实机验收仍按 MACOS-RELEASE.md 执行。
 
 首次 v0.4.17 标签构建因根包版本与 Cargo.lock 不一致而失败，没有发布安装包；保留该标签。后续统一版本为 0.4.18，并重新验证 --locked 桌面构建。
+
+0.4.18 本机 `desktop:build`（含 `--locked`）及完整载荷 NSIS 打包成功。标签 `v0.4.18` 指向 `d03288c`，[Actions 40830616542](https://github.com/Raveniume/Rhine-Music/actions/runs/40830616542) 成功，[Release](https://github.com/Raveniume/Rhine-Music/releases/tag/v0.4.18) 已公开；已读取公开 update.json，其安装包摘要为 `fd863567742e4210a3374a29140da4390bd5c5189d538915a888a514f09b0d6c`。未再次独立下载该公开安装包，不将清单读取计作文件校验或安装验收。
