@@ -2536,6 +2536,6 @@
 .music-counter > div > span { padding-bottom: .3em; }
 .search-browse-return { position:absolute; left:var(--shell-left, 4vw); top:150px; z-index:6; border:0; background:transparent; color:var(--ink); font:inherit; cursor:pointer; }
 .search-browse-return[hidden] { display:none; }
-.taskbar-lyrics-toggle[aria-pressed="true"] { color:var(--accent); background:color-mix(in srgb,var(--accent) 12%,transparent); border-radius:6px; }
+.taskbar-lyrics-toggle[aria-pressed="true"] { color:var(--accent); background:transparent; }
 .music-topnav .taskbar-lyrics-toggle { width:32px; min-width:32px; height:32px; padding:0; display:inline-flex; align-items:center; justify-content:center; }
 .taskbar-lyrics-toggle:focus-visible { outline:1px solid var(--accent); outline-offset:3px; }
