@@ -1,11 +1,12 @@
 import './music-settings.css';
+import { isMacDesktop } from './desktop-platform';
 
 export const settingsCategories = {
   local: '音乐库',
   playback: '播放与音频',
   lyrics: '歌词与频谱',
   appearance: '外观与动效',
-  desktop: '桌面与托盘',
+  desktop: isMacDesktop() ? '桌面与菜单栏' : '桌面与托盘',
   shortcuts: '快捷键',
   display: '画质与性能',
   developer: '高级与诊断',

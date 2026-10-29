@@ -9,7 +9,9 @@ const target = path.join(root, 'desktop-runtime');
 if (path.dirname(target) !== path.resolve(root)) throw new Error('Invalid runtime staging path');
 await fs.rm(target, { recursive: true, force: true });
 await fs.mkdir(target, { recursive: true });
-await fs.copyFile(process.execPath, path.join(target, 'node.exe'));
+const nodeName = process.platform === 'win32' ? 'node.exe' : 'node';
+await fs.copyFile(process.execPath, path.join(target, nodeName));
+if (process.platform !== 'win32') await fs.chmod(path.join(target, nodeName), 0o755);
 await fs.cp(path.join(root, 'scripts'), path.join(target, 'scripts'), { recursive: true });
 await fs.cp(path.join(root, 'dist'), path.join(target, 'dist'), { recursive: true });
 await fs.cp(path.join(root, 'native'), path.join(target, 'native'), { recursive: true });
@@ -23,7 +25,8 @@ if (child.status !== 0) throw new Error('Could not prepare locked production dep
 const bin = path.join(root, 'desktop-binaries');
 try {
   await fs.access(bin);
-  for (const name of ['ffmpeg.exe', 'ffprobe.exe', 'FFMPEG-LICENSE.txt', 'FFMPEG-README.txt']) await fs.access(path.join(bin, name));
+  const extension = process.platform === 'win32' ? '.exe' : '';
+  for (const name of [`ffmpeg${extension}`, `ffprobe${extension}`, 'FFMPEG-LICENSE.txt', 'FFMPEG-README.txt']) await fs.access(path.join(bin, name));
   await fs.cp(bin, path.join(target, 'bin'), { recursive: true });
 } catch (error) {
   if (error.code !== 'ENOENT' || await fs.stat(bin).catch(() => null)) throw error;

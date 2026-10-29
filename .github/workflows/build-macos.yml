@@ -1,0 +1,54 @@
+name: RhineMusic macOS builds
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            arch: arm64
+          - os: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    env:
+      VITE_PUBLIC_RELEASE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          architecture: ${{ matrix.arch }}
+          cache: npm
+      - name: Select Rust stable
+        run: rustup default stable
+      - run: npm ci
+      - name: Check shared version and platform behavior
+        run: |
+          node scripts/check-desktop-version.mjs
+          npm run check:desktop-platforms
+      - name: Build architecture-specific macOS preview
+        run: npm run desktop:build
+      - name: Native regression tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RhineMusic-macOS-${{ matrix.arch }}-preview
+          if-no-files-found: error
+          path: |
+            release/macos-*/*.dmg
+            release/macos-*/*.dmg.sha256
+            release/macos-*/verification.json
+
+# Intentionally independent of release-desktop.yml: a Mac failure or absent
+# Apple credentials cannot block or publish anything into the Windows release.
+# Preview artifacts are ad-hoc signed, not notarized distribution releases.

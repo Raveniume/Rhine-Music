@@ -1,3 +1,4 @@
+import { isMacDesktop, backgroundCloseLabel, desktopLyricsLabel, desktopSystemName } from './desktop-platform';
 import "@kitlangton/rolling-number/styles.css";
 import "./style.css";
 import "./quality-settings.css";
@@ -389,7 +390,7 @@ stage.innerHTML = `
       <button data-action="search" class="icon-button" aria-label="搜索" title="搜索音乐">${icons.search}</button>
       <button data-action="playlists" class="icon-button" id="my-playlists-button" hidden aria-label="我的歌单">${svg('<path d="M12 21a9 9 0 1 1 9-9"/><circle cx="12" cy="12" r="3"/><path d="M15 15h7M15 18h7M15 21h7"/>')}</button>
       <button data-action="settings" class="icon-button" aria-label="设置" title="设置">${icons.settings}</button>
-      ${isDesktop() && /Windows/i.test(navigator.userAgent) ? `<button data-action="toggle-taskbar-lyrics" class="icon-button taskbar-lyrics-toggle" aria-label="桌面歌词" title="桌面歌词" aria-pressed="${preferences.taskbarLyrics}">${svg('<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M7 10h10M7 14h6"/>')}</button>` : ''}
+      ${isDesktop() ? `<button data-action="toggle-taskbar-lyrics" class="icon-button taskbar-lyrics-toggle" aria-label="桌面歌词" title="桌面歌词" aria-pressed="${preferences.taskbarLyrics}">${svg('<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M7 10h10M7 14h6"/>')}</button>` : ''}
       <div class="minimal-transport" role="group" aria-label="音乐播放"><button type="button" data-action="locate-playing" id="transport-track" class="transport-track" aria-label="定位当前歌曲" aria-hidden="true" disabled><span id="transport-track-label"></span></button><button data-action="play-pause" id="play-pause" aria-label="播放" aria-pressed="false"><span class="transport-glyph transport-play" aria-hidden="true">${icons.play}</span><span class="transport-glyph transport-pause" aria-hidden="true">${icons.pause}</span></button><button data-action="stop" id="stop-playback" aria-label="停止">${icons.stop}</button><button data-action="play-queue" class="icon-button" id="play-queue-button" aria-label="播放列表">${svg('<path d="M4 6h12M4 12h12M4 18h7M17 15l4 3-4 3z"/>')}<small id="queue-count" hidden>0</small></button>${transportVolumeMarkup(preferences.volume)}<div class="mini-playback-below" id="mini-playback-below" data-song="" hidden><span data-mini-lyric></span><input class="playback-seek" type="range" min="0" max="1" value="0" step="0.1" aria-label="歌曲播放进度" disabled></div></div>
       <button data-action="netease-login" id="netease-login-button" aria-label="登录">${icons.account}<span>登录</span></button>
     </nav>
@@ -850,6 +851,7 @@ function savePrefs() {
 function detectAutomaticQuality() {
   if (!scene) return;
   automaticProfile = automaticQuality({ ...scene.graphicsIdentity,
+    platform: window.__RHINE_PLATFORM__,
     cores: navigator.hardwareConcurrency,
     memoryGB: (navigator as Navigator & { deviceMemory?: number }).deviceMemory,
     nativePixels: innerWidth * innerHeight * devicePixelRatio ** 2 });
@@ -2342,7 +2344,7 @@ player.subscribe((state) => {
 });
 
 function audioOutputMarkup() {
-  return `<section class="panel-section"><h3>音频输出</h3><label class="settings-row"><span>输出方式</span><select id="audio-backend" aria-label="音频输出方式">${isDesktop() ? '<option value="browser">Windows 系统输出</option>' : '<option value="browser">浏览器输出</option><option value="coreaudio">Mac 原生 CoreAudio</option>'}</select></label><label class="settings-row" id="audio-device-row"><span>输出设备</span><select id="audio-device" aria-label="音频输出设备"></select></label><p id="audio-output-status" role="status"></p><button class="text-button" data-action="refresh-output">刷新输出设备 ↻</button></section>`;
+  return `<section class="panel-section"><h3>音频输出</h3><label class="settings-row"><span>输出方式</span><select id="audio-backend" aria-label="音频输出方式">${isDesktop() ? `<option value="browser">${desktopSystemName()} 系统输出</option>` : '<option value="browser">浏览器输出</option><option value="coreaudio">Mac 原生 CoreAudio</option>'}</select></label><label class="settings-row" id="audio-device-row"><span>输出设备</span><select id="audio-device" aria-label="音频输出设备"></select></label><p id="audio-output-status" role="status"></p><button class="text-button" data-action="refresh-output">刷新输出设备 ↻</button></section>`;
 }
 function syncAudioOutputUI() {
   const backend = document.querySelector<HTMLSelectElement>("#audio-backend");
@@ -2371,7 +2373,7 @@ async function refreshAudioOutputs(restore = false) {
   try {
     const capabilities = await player.refreshOutputs();
     audioOutputsChecked = true;
-    outputStatus = isDesktop() ? capabilities.decoderAvailable ? "本机解码已就绪，歌曲通过 Windows 系统默认设备输出。" : "未检测到 FFmpeg，当前仅可播放系统支持的格式。" : capabilities.decoderAvailable ? capabilities.nativeAvailable ?
+    outputStatus = isDesktop() ? capabilities.decoderAvailable ? `本机解码已就绪，歌曲通过 ${desktopSystemName()} 系统默认设备输出。` : "未检测到 FFmpeg，当前仅可播放系统支持的格式。" : capabilities.decoderAvailable ? capabilities.nativeAvailable ?
       "本机解码与 CoreAudio 已就绪。" : "本机解码已就绪；原生输出暂不可用。" :
       "未检测到 FFmpeg，当前仅可播放浏览器支持的格式。";
     if (restore && preferences.audioBackend === "coreaudio")
@@ -2388,7 +2390,7 @@ async function changeAudioOutput(backend: "browser" | "coreaudio", deviceId: str
     preferences.audioBackend = player.state.backend;
     preferences.outputDeviceId = player.state.outputDeviceId;
     savePrefs();
-    outputStatus = isDesktop() ? "歌曲通过 Windows 系统默认设备输出。" : backend === "coreaudio" ? "歌曲通过 Mac 原生设备输出。" : "歌曲通过浏览器输出。";
+    outputStatus = isDesktop() ? `歌曲通过 ${desktopSystemName()} 系统默认设备输出。` : backend === "coreaudio" ? "歌曲通过 Mac 原生设备输出。" : "歌曲通过浏览器输出。";
   } catch (error) { outputStatus = (error as Error).message; notify(outputStatus); }
   finally { outputBusy = false; syncAudioOutputUI(); }
 }
@@ -2568,7 +2570,7 @@ function renderSettingsPanel() {
   $("#panel-body").innerHTML =
     `<section class="panel-section" data-settings-group="appearance"><h3>外观主题</h3><label class="settings-row theme-follow-system"><span>跟随系统</span><input type="checkbox" id="follow-system-theme" ${preferences.followSystemTheme ? "checked" : ""}></label><div class="theme-cards" aria-disabled="${preferences.followSystemTheme}">${(["day", "night"] as Theme[]).map((t) => `<button data-theme="${t}" aria-pressed="${preferences.theme === t}" ${preferences.followSystemTheme ? 'disabled' : ''} class="${t}"><i></i><strong>${themeNames[t]}</strong><span>${t === "day" ? "浅色背景" : "深色背景"}</span></button>`).join("")}</div></section>
     <section class="panel-section" data-settings-group="appearance"><h3>启动体验</h3><label class="settings-row"><span>启动时展示元素滚动</span><input type="checkbox" id="startup-opening" aria-label="启动时展示元素滚动" ${preferences.startupOpening ? "checked" : ""}></label><p class="quality-note">安装后首次打开播放完整开场。</p><button class="text-button" data-action="replay-boot">观看完整启动动画 ↗</button></section>
-    <section class="panel-section" data-settings-group="desktop"><h3>关闭行为</h3><label class="settings-row"><span>点击关闭按钮时</span><select id="close-behavior" aria-label="点击关闭按钮时"><option value="ask" ${preferences.closeBehavior === 'ask' ? 'selected' : ''}>每次询问</option><option value="tray" ${preferences.closeBehavior === 'tray' ? 'selected' : ''}>最小化到托盘</option><option value="exit" ${preferences.closeBehavior === 'exit' ? 'selected' : ''}>彻底退出</option></select></label><p class="quality-note">最小化到托盘后继续播放音乐。</p></section>
+    <section class="panel-section" data-settings-group="desktop"><h3>关闭行为</h3><label class="settings-row"><span>点击关闭按钮时</span><select id="close-behavior" aria-label="点击关闭按钮时"><option value="ask" ${preferences.closeBehavior === 'ask' ? 'selected' : ''}>每次询问</option><option value="tray" ${preferences.closeBehavior === 'tray' ? 'selected' : ''}>${backgroundCloseLabel()}</option><option value="exit" ${preferences.closeBehavior === 'exit' ? 'selected' : ''}>彻底退出</option></select></label><p class="quality-note">${isMacDesktop() ? '关闭窗口后继续播放，点击 Dock 图标恢复；Command–Q 退出。' : '最小化到托盘后继续播放音乐。'}</p></section>
     ${visualizerMarkup(preferences.visualizer!)}
     <section class="panel-section" data-settings-group="lyrics"><h3>歌词显示</h3><label class="settings-row"><span>歌词区域高度 <output id="lyric-area-size-value">${preferences.lyricAreaSize}%</output></span><input type="range" id="lyric-area-size" aria-label="歌词区域高度" min="40" max="100" step="5" value="${preferences.lyricAreaSize}"></label><p class="quality-note">调整歌曲详情页的歌词高度。</p></section>
     <section class="panel-section" data-settings-group="shortcuts"><h3>键盘操作</h3><label class="settings-row"><span>切换歌曲时自动播放</span><input type="checkbox" id="keyboard-sync-playback" aria-label="方向键切换时同步播放" ${preferences.keyboardSyncPlayback ? "checked" : ""}></label>${keybindingsMarkup(preferences.keybindings)}</section>
@@ -2587,7 +2589,7 @@ function renderSettingsPanel() {
     <section class="panel-section" data-settings-group="appearance"><h3>动效与显示</h3><label class="settings-row"><span>页面文字遮罩动画</span><input type="checkbox" id="page-text-mask" ${preferences.pageTextMask ? "checked" : ""}></label><p class="quality-note">关闭后直接显示文字。</p><label class="settings-row"><span>减少动态效果</span><input type="checkbox" id="reduced-motion" ${preferences.reduced ? "checked" : ""}></label></section><section class="panel-section" data-settings-group="desktop"><h3>窗口与全屏</h3>${windowDisplayMarkup()}</section><section class="panel-section" data-settings-group="developer"><h3>界面维护</h3><button class="text-button" data-action="reload-interface">重新载入界面 ↻</button></section>
     <section class="panel-section" data-settings-group="playback"><h3>音乐播放</h3><label class="settings-row"><span>歌曲音量</span><input type="range" id="volume" aria-label="歌曲音量" min="0" max="100" value="${Math.round(preferences.volume * 100)}"></label><label class="settings-row"><span>歌曲衔接</span><select id="song-fade-setting" aria-label="歌曲衔接方式"><option value="fade-out" ${preferences.songTransition === "fade-out" ? "selected" : ""}>仅淡出</option><option value="fade-in-out" ${preferences.songTransition === "fade-in-out" ? "selected" : ""}>淡出淡入</option><option value="gapless" ${preferences.songTransition === "gapless" ? "selected" : ""}>无缝播放</option></select></label></section><section class="panel-section" data-settings-group="appearance"><h3>界面声音</h3><label class="settings-row"><span>界面音效</span><input type="checkbox" id="sound-setting" ${preferences.sound ? "checked" : ""}></label><label class="settings-row"><span>音效音量</span><input type="range" id="sound-volume" aria-label="音效音量" min="0" max="100" value="${Math.round(preferences.soundVolume * 100)}"></label><label class="settings-row"><span>背景音乐</span><input type="checkbox" id="bgm-setting" ${preferences.bgm ? "checked" : ""}></label><label class="settings-row"><span>背景音乐音量</span><input type="range" id="bgm-volume" aria-label="背景音乐音量" min="0" max="100" value="${Math.round(preferences.bgmVolume * 100)}"></label><button class="text-button" data-action="sound-preview">试听界面音效 ↗</button></section>
     <details class="panel-section" id="musicbrainz-settings" data-settings-group="local"><summary>高级设置 · MusicBrainz</summary><button data-action="enrich-library" class="text-button">补充缺失的在线资料 ↗</button><div id="online-config"></div></details>
-    ${isDesktop() ? `<section class="panel-section" data-settings-group="desktop"><h3>任务栏歌词</h3><label class="settings-row"><span>显示任务栏歌词</span><input type="checkbox" id="taskbar-lyrics-enabled" ${preferences.taskbarLyrics ? 'checked' : ''}></label><button class="primary-button" data-action="restore-taskbar-lyrics">重新显示歌词</button><p id="taskbar-lyrics-status" role="status"></p></section>` : ''}
+    ${isDesktop() ? `<section class="panel-section" data-settings-group="desktop"><h3>${desktopLyricsLabel()}</h3><label class="settings-row"><span>显示${desktopLyricsLabel()}</span><input type="checkbox" id="taskbar-lyrics-enabled" ${preferences.taskbarLyrics ? 'checked' : ''}></label><button class="primary-button" data-action="restore-taskbar-lyrics">重新显示歌词</button><p id="taskbar-lyrics-status" role="status"></p></section>` : ''}
     ${aboutMarkup(displayVersion)}`;
   $('#panel-body').insertAdjacentHTML('afterbegin', '<section class="panel-section" data-settings-group="local"><h3>音乐库</h3><button data-action="library" class="primary-button">管理音乐库 ↗</button></section>');
   if (lightingLab) $("#panel-body").insertAdjacentHTML("beforeend", `
@@ -2924,7 +2926,7 @@ document.addEventListener("click", (e) => {
     preferences.taskbarLyrics = true; savePrefs();
     stage.querySelector('[data-action="toggle-taskbar-lyrics"]')?.setAttribute('aria-pressed', 'true');
     const toggle = document.querySelector<HTMLInputElement>('#taskbar-lyrics-enabled'); if (toggle) toggle.checked = true;
-    void configureTaskbarLyrics(true, true).then(() => { $('#taskbar-lyrics-status').textContent = '已重新显示任务栏歌词'; }).catch(error => notify(String(error)));
+    void configureTaskbarLyrics(true, true).then(() => { $('#taskbar-lyrics-status').textContent = `已重新显示${desktopLyricsLabel()}`; }).catch(error => notify(String(error)));
     return;
   }
   if (action === 'settings-category') {

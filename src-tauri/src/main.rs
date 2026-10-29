@@ -10,6 +10,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 mod instance_handoff;
+#[cfg_attr(target_os = "macos", path = "macos/menu_bar.rs")]
 mod taskbar_lyric;
 mod update_download;
 
@@ -269,6 +270,12 @@ async fn desktop_install_update(app: tauri::AppHandle, url: String, sha256: Stri
         install_update(app, url, sha256)
     }).await.map_err(|e| e.to_string())?
 }
+#[cfg(not(windows))]
+fn install_update(_app: tauri::AppHandle, _url: String, _sha256: String) -> Result<(), String> {
+    Err("请从发布页下载适用于本机的安装包".into())
+}
+
+#[cfg(windows)]
 fn install_update(app: tauri::AppHandle, url: String, sha256: String) -> Result<(), String> {
     let parsed: tauri::Url = url.parse().map_err(|_| "更新地址无效".to_owned())?;
     if parsed.scheme() != "https" || parsed.host_str() != Some("github.com") || parsed.port_or_known_default() != Some(443) || !parsed.path().starts_with("/Raveniume/Rhine-Music/releases/download/") { return Err("更新地址不是 RhineMusic GitHub Release 资产".into()); }
@@ -287,15 +294,15 @@ fn install_update(app: tauri::AppHandle, url: String, sha256: String) -> Result<
         let script = format!("Wait-Process -Id {app_pid} -ErrorAction SilentlyContinue; $installer = Start-Process -FilePath '{target_ps}' -ArgumentList '/S' -WindowStyle Hidden -Wait -PassThru; if ($installer.ExitCode -eq 0) {{ $entry = Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\RhineMusicWindowsPreview' -ErrorAction SilentlyContinue; if ($entry.InstallLocation) {{ Start-Process (Join-Path $entry.InstallLocation 'Rhine Music.exe') -ArgumentList '--installed-first-launch' -WindowStyle Hidden }} }}");
         Command::new("powershell.exe").args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", &script]).creation_flags(0x08000000).spawn().map_err(|e| e.to_string())?;
     }
-    #[cfg(not(windows))] { return Err("Windows 安装包只能由 Windows 桌面版更新".into()); }
     EXITING.store(true, Ordering::Release);
     app.exit(0);
     Ok(())
 }
 
 fn start_service(app: &tauri::AppHandle) -> Result<(MusicService, tauri::Url), Box<dyn std::error::Error>> {
+    let node_name = if cfg!(windows) { "node.exe" } else { "node" };
     let resource_root = app.path().resource_dir()?.join("runtime");
-    let runtime: PathBuf = if resource_root.join("node.exe").is_file() { resource_root }
+    let runtime: PathBuf = if resource_root.join(node_name).is_file() { resource_root }
         else {
             #[cfg(debug_assertions)]
             { PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../desktop-runtime") }
@@ -306,7 +313,7 @@ fn start_service(app: &tauri::AppHandle) -> Result<(MusicService, tauri::Url), B
         .unwrap_or(app.path().app_local_data_dir()?.join("music-data"));
     std::fs::create_dir_all(&data)?;
     let log = std::fs::OpenOptions::new().create(true).append(true).open(data.join("service.log"))?;
-    let mut command = Command::new(runtime.join("node.exe"));
+    let mut command = Command::new(runtime.join(node_name));
     command.arg("scripts/desktop-server.mjs").current_dir(&runtime)
         .env("MUSIC_DATA_DIR", &data).env_remove("MUSIC_ROOTS")
         .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::from(log));
@@ -349,13 +356,16 @@ fn main() {
             app.manage(load_close_preference(app.handle()));
             let origin = url.origin().ascii_serialization();
             taskbar_lyric::setup_tray(app.handle()).map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
-            let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url.clone()))
+            let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url.clone()))
                 .title("Rhine Music").inner_size(1280.0, 800.0).min_inner_size(800.0, 560.0)
                 .decorations(false).resizable(true).fullscreen(false)
                 .initialization_script("Object.defineProperty(window, '__RHINE_GPU_REQUEST__', { value: 'system-default' });")
+                .initialization_script(format!("Object.defineProperty(window, '__RHINE_PLATFORM__', {{ value: '{}' }});", std::env::consts::OS))
                 .background_color(tauri::window::Color(232, 229, 225, 255))
-                .on_navigation(move |target| target.origin().ascii_serialization() == origin)
-                .build()?;
+                .on_navigation(move |target| target.origin().ascii_serialization() == origin);
+            #[cfg(target_os = "macos")]
+            let builder = builder.decorations(true).title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
+            let window = builder.build()?;
             #[cfg(target_os = "windows")]
             if let Ok(handle) = window.hwnd() {
                 use windows_sys::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_BORDER_COLOR};
@@ -372,11 +382,19 @@ fn main() {
             let app_for_close = app.handle().clone();
             let (notify, events) = std::sync::mpsc::sync_channel::<()>(1);
             std::thread::spawn(move || {
+                #[cfg(target_os = "macos")]
+                let mut previous = None;
                 while events.recv().is_ok() {
                     let Ok(minimized) = view.is_minimized() else { break; };
                     let hidden = minimized || !view.is_visible().unwrap_or(false);
                     let Ok(fullscreen) = view.is_fullscreen() else { break; };
                     let Ok(maximized) = view.is_maximized() else { break; };
+                    #[cfg(target_os = "macos")]
+                    {
+                        let current = (hidden, fullscreen, maximized);
+                        if previous == Some(current) { continue; }
+                        previous = Some(current);
+                    }
                     if view.eval(&format!("window.dispatchEvent(new CustomEvent('rhine-desktop-visibility',{{detail:{{hidden:{hidden}}}}}));window.dispatchEvent(new CustomEvent('rhine-desktop-window-state',{{detail:{{fullscreen:{fullscreen},maximized:{maximized}}}}}));")).is_err() { break; }
                 }
             });
@@ -411,5 +429,9 @@ fn main() {
         .expect("Rhine Music desktop initialization failed")
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) { app.state::<MusicService>().stop(); }
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                taskbar_lyric::show_main(app);
+            }
         });
 }

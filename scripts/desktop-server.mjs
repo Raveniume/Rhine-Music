@@ -5,7 +5,7 @@ import { createMusicServer } from './music-server.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 for (const [name, variable] of [['ffmpeg', 'FFMPEG_PATH'], ['ffprobe', 'FFPROBE_PATH']]) {
-  const bundled = path.join(root, 'bin', `${name}.exe`);
+  const bundled = path.join(root, 'bin', `${name}${process.platform === 'win32' ? '.exe' : ''}`);
   if (!process.env[variable] && existsSync(bundled)) process.env[variable] = bundled;
 }
 // The desktop controls the service lifetime. Never reuse a foreign process.

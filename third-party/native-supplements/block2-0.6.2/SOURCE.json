@@ -1,0 +1,7 @@
+{
+  "repository": "https://github.com/madsmtm/objc2",
+  "commit": "b4167b582b2f75f9a1be75495c41b765344fd03c",
+  "url": "https://github.com/madsmtm/objc2/blob/b4167b582b2f75f9a1be75495c41b765344fd03c/LICENSE.md",
+  "blob": "540ae4c81adb5f64a9f61e222b688880da24300e",
+  "reason": "The published crate omits the repository license notice. Preserved verbatim from its .cargo_vcs_info.json source revision."
+}
