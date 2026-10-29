@@ -1,4 +1,4 @@
-# 0.4.17 验证记录
+# 0.4.18 验证记录
 
 2026-10-29，使用合成歌单、隔离配置和静音音频。
 
@@ -9,4 +9,6 @@
 
 **browserRuntimeChecked=true；closeHelperRuntimeChecked=true；installerRuntimeChecked=false；inAppUpdateChecked=false。** 尚未直接验收安装器“确认关闭→文件覆盖→启动”的完整交互，不能以编译或脚本检查替代该结论。此前自动审批拒绝执行完整安装命令，本次未绕过。
 
-本机已安装的 0.4.16 不受代码修改影响；0.4.17 安装后才会使用新界面与安装提示。Mac 签名、公证和实机验收仍按 MACOS-RELEASE.md 执行。
+本机已安装的 0.4.16 不受代码修改影响；0.4.18 安装后才会使用新界面与安装提示。Mac 签名、公证和实机验收仍按 MACOS-RELEASE.md 执行。
+
+首次 v0.4.17 标签构建因根包版本与 Cargo.lock 不一致而失败，没有发布安装包；保留该标签。后续统一版本为 0.4.18，并重新验证 --locked 桌面构建。
