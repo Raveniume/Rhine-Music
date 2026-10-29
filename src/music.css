@@ -1894,8 +1894,10 @@
    navigation without shifting the callout geometry. */
 .album-callout[data-title-pending="true"] #selection-title .music-title-rolling,
 .album-callout[data-title-pending="true"] #selection-title .music-title-rapid { visibility: hidden; }
-.selection-number-reel { display: inline-block; height: 1.2em; line-height: 1.2; overflow: hidden; vertical-align: bottom; font-variant-numeric: tabular-nums; }
-.selection-number-strip { display: flex; flex-direction: column; }
+.selection-number-reel { display: inline-block; position: relative; height: 1.2em; line-height: 1.2; clip-path: inset(0); vertical-align: baseline; font-variant-numeric: tabular-nums; }
+.selection-number-baseline { visibility: hidden; }
+.music-counter b.selection-number-reel { line-height: 1.2; }
+.selection-number-strip { display: flex; flex-direction: column; position: absolute; top: 0; left: 0; width: 100%; }
 .selection-number-strip > span { display: block; height: 1.2em; line-height: 1.2; }
 
 /* Placement follows the scene's aspect-ratio state, independently of font sizing. */
@@ -2531,9 +2533,9 @@
 .playback-albums .genre-stepper, .playback-albums .music-view-toggle { display: none; }
 
 /* Negative tracking can extend the final glyph beyond its advance width. */
-#selection-number.selection-number-reel { padding-inline: .08em; margin-inline: -.08em; }
-.music-counter > div { align-items: flex-end; }
-.music-counter > div > span { padding-bottom: .3em; }
+#selection-number.selection-number-reel { clip-path: inset(0 -.08em); }
+.music-counter > div { align-items: baseline; }
+.music-counter > div > span { padding-bottom: 0; }
 .search-browse-return { position:absolute; left:var(--shell-left, 4vw); top:150px; z-index:6; border:0; background:transparent; color:var(--ink); font:inherit; cursor:pointer; }
 .search-browse-return[hidden] { display:none; }
 .taskbar-lyrics-toggle[aria-pressed="true"] { color:var(--accent); background:transparent; }

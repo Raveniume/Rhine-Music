@@ -56,10 +56,19 @@ export function setupMusicTextMotion(root: HTMLElement) {
     let current = 1, animated = false, duration = motion.duration;
     let animation: Animation | undefined;
     const format = (value: number) => String(value).padStart(digits, '0');
+    const render = (strip: HTMLElement) => {
+      const baseline = document.createElement('span');
+      baseline.className = 'selection-number-baseline';
+      baseline.textContent = format(current);
+      baseline.setAttribute('aria-hidden', 'true');
+      strip.setAttribute('aria-hidden', 'true');
+      element.setAttribute('aria-label', format(current));
+      element.replaceChildren(baseline, strip);
+    };
     const rest = () => {
       const strip = document.createElement('span'); strip.className = 'selection-number-strip';
       const face = document.createElement('span'); face.textContent = format(current); strip.append(face);
-      element.replaceChildren(strip);
+      render(strip);
     };
     rest();
     return {
@@ -76,7 +85,7 @@ export function setupMusicTextMotion(root: HTMLElement) {
         for (const value of down ? [current, previous] : [previous, current]) {
           const face = document.createElement('span'); face.textContent = format(value); strip.append(face);
         }
-        element.replaceChildren(strip);
+        render(strip);
         const from = down ? '-50%' : '0%', to = down ? '0%' : '-50%';
         strip.style.transform = 'translateY(' + to + ')';
         animation = strip.animate([{transform:'translateY('+from+')'}, {transform:'translateY('+to+')'}], {duration, easing:'cubic-bezier(.22,1,.36,1)'});

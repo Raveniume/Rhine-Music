@@ -24,7 +24,7 @@ VIAddVersionKey /LANG=2052 "LegalCopyright" "Rhine Music contributors; see bundl
 !define MUI_UNICON "${APP_ICON}"
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE "安装 Rhine Music 体验版"
-!define MUI_WELCOMEPAGE_TEXT "将安装 ${APP_VERSION}。$\r$\n$\r$\n包含播放器和本机运行环境，无需另装 Node.js。缺少 WebView2 时会提示安装 Microsoft 官方运行时。$\r$\n$\r$\n安装前请退出正在运行的 Rhine Music。个人音乐、登录状态与设置保留在原来的用户数据目录。"
+!define MUI_WELCOMEPAGE_TEXT "将安装 ${APP_VERSION}。$\r$\n$\r$\n包含播放器和本机运行环境，无需另装 Node.js。缺少 WebView2 时会提示安装 Microsoft 官方运行时。$\r$\n$\r$\n播放器正在运行时，可确认关闭后继续安装。个人音乐、登录状态与设置保留在原来的用户数据目录。"
 !insertmacro MUI_PAGE_WELCOME
 !define MUI_LICENSEPAGE_TEXT_TOP "请阅读本地体验版说明、平台适配范围及隐私信息。"
 !insertmacro MUI_PAGE_LICENSE "${INSTALL_NOTES}"
@@ -42,6 +42,7 @@ VIAddVersionKey /LANG=2052 "LegalCopyright" "Rhine Music contributors; see bundl
 !insertmacro MUI_UNPAGE_FINISH
 !insertmacro MUI_LANGUAGE "SimpChinese"
 Var WebViewReady
+Var CloseAttempted
 
 Function .onInit
   SetShellVarContext current
@@ -76,6 +77,7 @@ Function ValidateDirectory
 FunctionEnd
 
 !macro CheckNotRunning PREFIX
+  ${PREFIX}check:
   IfFileExists "$INSTDIR\Rhine Music.exe" 0 ${PREFIX}node
   ClearErrors
   FileOpen $0 "$INSTDIR\Rhine Music.exe" a
@@ -89,6 +91,25 @@ FunctionEnd
   FileClose $0
   Goto ${PREFIX}ready
   ${PREFIX}busy:
+!if "${PREFIX}" == "install_"
+    IfSilent ${PREFIX}failed
+    StrCmp $CloseAttempted 1 ${PREFIX}failed
+    MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "Rhine Music 正在运行。是否关闭播放器并继续安装？$\r$\n$\r$\n当前播放将停止。" /SD IDNO IDYES ${PREFIX}close
+    SetErrorLevel 2
+    Abort
+    ${PREFIX}close:
+      StrCpy $CloseAttempted 1
+      InitPluginsDir
+      SetOutPath "$PLUGINSDIR"
+      File /oname=close-running-player.ps1 "close-running-player.ps1"
+      nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\close-running-player.ps1" -InstallDirectory "$INSTDIR"'
+      Pop $0
+      Pop $1
+      StrCmp $0 0 0 ${PREFIX}failed
+      Sleep 500
+      Goto ${PREFIX}check
+    ${PREFIX}failed:
+!endif
     MessageBox MB_OK|MB_ICONSTOP "程序仍在运行。请先退出此安装目录中的 Rhine Music，再重试。" /SD IDOK
     SetErrorLevel 2
     Abort
@@ -116,6 +137,7 @@ FunctionEnd
 Section "播放器及运行环境（必需）" MainSection
   SectionIn RO
   Call ValidateDirectory
+  StrCpy $CloseAttempted 0
   !insertmacro CheckNotRunning install_
   Call DetectWebView
   ${If} $WebViewReady != 1

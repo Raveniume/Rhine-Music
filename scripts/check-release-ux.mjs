@@ -113,6 +113,15 @@ try {
     assert.ok(Math.max(...iconCenters.map(p=>p.y))-Math.min(...iconCenters.map(p=>p.y))<1,'Header icons share a center line');
     const distances=iconCenters.slice(1).map((p,i)=>p.x-iconCenters[i].x);
     assert.ok(Math.max(...distances)-Math.min(...distances)<1,'Header navigation icons have equal spacing');
+    const baselines=await page.evaluate(()=>{
+      const baseline=selector=>{
+        const host=document.querySelector(selector), marker=document.createElement('span');
+        marker.style.cssText='display:inline-block;width:0;height:0;padding:0;margin:0;vertical-align:baseline';
+        host.append(marker);const y=marker.getBoundingClientRect().bottom;marker.remove();return y;
+      };
+      return {counter:[baseline('#selection-number .selection-number-strip > span'),baseline('.music-counter > div > span')],code:[baseline('#selection-code'),baseline('#selection-code-number .selection-number-strip > span')]};
+    });
+    for(const [name,values] of Object.entries(baselines)) assert.ok(Math.abs(values[0]-values[1])<1,`${name} text baselines align: ${values}`);
     await page.screenshot({path:`${output}/home-${viewport.width}.png`});
     await page.locator('.open-album').click();
     await page.locator('#song-tab-info').waitFor({state:'visible'});
