@@ -87,6 +87,20 @@ try {
   await page.waitForFunction(()=>document.querySelector('.music-app').dataset.musicBoot==='done');
   await page.locator('.open-album').waitFor({state:'visible'});
   await page.waitForTimeout(1500);
+  if (desktop) {
+    const toggle=page.locator('[data-action="toggle-taskbar-lyrics"]');
+    await toggle.click();
+    assert.equal(await toggle.getAttribute('aria-pressed'),'false');
+    const lyric=browser.contexts()[0].pages().find(p=>p.url().includes('taskbar=1'));
+    await page.waitForTimeout(500);
+    assert.equal(await lyric.evaluate(()=>window.__TAURI__.window.getCurrentWindow().isVisible()),false);
+    await toggle.click();
+    await page.waitForTimeout(500);
+    assert.equal(await toggle.getAttribute('aria-pressed'),'true');
+    assert.equal(await lyric.evaluate(()=>window.__TAURI__.window.getCurrentWindow().isVisible()),true);
+    await page.locator('.music-topnav').screenshot({path:output+'/lyrics-toggle.png'});
+    report.lyricsQuickToggle=true;
+  }
   for(const viewport of [{width:1280,height:800},{width:1440,height:900},{width:1920,height:1080},{width:1024,height:768}]) {
     await page.setViewportSize(viewport); await page.waitForTimeout(350);
     const geometry=await page.evaluate(()=>{
@@ -123,13 +137,14 @@ try {
   }
   await page.setViewportSize({width:1440,height:900});await page.waitForTimeout(300);
   // Real wheel events and per-frame observations catch a one-frame old-title return.
-  await page.evaluate(()=>{window.titleFrames=[];window.captureTitles=true;const frame=()=>{if(!window.captureTitles)return;const n=document.querySelector('#selection-title');window.titleFrames.push({title:n.getAttribute('aria-label'),rapid:document.querySelector('.music-title-rapid').hidden,faces:[...n.querySelectorAll('.music-title-face')].filter(n=>{const b=n.getBoundingClientRect(),s=n.closest('.music-title-slot').getBoundingClientRect();return getComputedStyle(n.closest('.music-title-slot')).visibility!=='hidden'&&b.top>=s.top-1&&b.top<s.bottom-1;}).map(n=>n.textContent).join(''),numberAnimation:document.querySelector('#selection-code-number').getAnimations({subtree:true}).length});requestAnimationFrame(frame);};frame();});
+  await page.evaluate(()=>{window.titleFrames=[];window.captureTitles=true;const frame=()=>{if(!window.captureTitles)return;const n=document.querySelector('#selection-title');window.titleFrames.push({title:n.getAttribute('aria-label'),rapid:document.querySelector('.music-title-rapid').hidden,faces:[...n.querySelectorAll('.music-title-face')].filter(n=>{const b=n.getBoundingClientRect(),s=n.closest('.music-title-slot').getBoundingClientRect();return getComputedStyle(n.closest('.music-title-slot')).visibility!=='hidden'&&b.top>=s.top-1&&b.top<s.bottom-1;}).map(n=>n.textContent).join(''),counterTop:document.querySelector('#selection-number').getBoundingClientRect().top,numberAnimation:document.querySelector('#selection-code-number').getAnimations({subtree:true}).length});requestAnimationFrame(frame);};frame();});
   await page.mouse.move(400,400);
   for(let i=0;i<6;i++){await page.mouse.wheel(0,120);await page.waitForTimeout(120);}
   await page.waitForTimeout(1100);
   const frames=await page.evaluate(()=>{window.captureTitles=false;return window.titleFrames;});
   assert.ok(new Set(frames.map(f=>f.title)).size>2,'Real wheel changes selection');
   assert.ok(frames.some(f=>f.numberAnimation>0),'SONG number has a live rolling animation');
+  assert.ok(Math.max(...frames.map(f=>f.counterTop))-Math.min(...frames.map(f=>f.counterTop))<1,'Counter position stays fixed throughout the animation');
   for(const f of frames)if(f.rapid&&f.title&&f.faces)assert.equal(f.faces,f.title,'Every painted settled title matches the current selection');
   report.wheel=frames;
   for(const number of [18,20]) {
@@ -270,6 +285,7 @@ try {
   await page.locator('.music-boot-skip').click();
   await page.waitForFunction(()=>document.querySelector('.music-app').dataset.musicBoot==='done');
   report.manualFullOpening=true;
+  const beforeSearch = await page.evaluate(()=>({id:window.rhineMusic.selectedAlbum?.id,title:document.querySelector('#album-detail-content > h1')?.textContent}));
   await page.locator('[data-action="search"]').first().click();
   await page.locator('[data-search-source="network"]').click();
   await page.locator('#online-search').fill('fixture');await page.locator('#online-search').press('Enter');
@@ -279,7 +295,8 @@ try {
   await page.waitForFunction(()=>window.rhineMusic.presentation.cameraReady);
   await page.screenshot({path:output+'/search-playing-detail.png'});
   await page.locator('.music-back').click(); await page.waitForTimeout(1300);
-  await page.locator('[data-action="next"]').first().click(); await page.waitForTimeout(800);
+  assert.equal(await page.evaluate(()=>window.rhineMusic.selectedAlbum?.id),beforeSearch.id,'Search back restores the previous shelf selection');
+  report.searchReturn=true;
   await page.locator('#transport-track').click();
   await page.waitForFunction(()=>document.querySelector('#album-detail-content > h1')?.textContent.includes('搜索独立曲目 1') && document.querySelector('#music-detail')?.getAttribute('aria-hidden')==='false');
   await page.locator('[data-action="search"]').first().click();

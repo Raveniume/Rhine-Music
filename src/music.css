@@ -2532,3 +2532,10 @@
 
 /* Negative tracking can extend the final glyph beyond its advance width. */
 #selection-number.selection-number-reel { padding-inline: .08em; margin-inline: -.08em; }
+.music-counter > div { align-items: flex-end; }
+.music-counter > div > span { padding-bottom: .3em; }
+.search-browse-return { position:absolute; left:var(--shell-left, 4vw); top:150px; z-index:6; border:0; background:transparent; color:var(--ink); font:inherit; cursor:pointer; }
+.search-browse-return[hidden] { display:none; }
+.taskbar-lyrics-toggle[aria-pressed="true"] { color:var(--accent); background:color-mix(in srgb,var(--accent) 12%,transparent); border-radius:6px; }
+.music-topnav .taskbar-lyrics-toggle { width:32px; min-width:32px; height:32px; padding:0; display:inline-flex; align-items:center; justify-content:center; }
+.taskbar-lyrics-toggle:focus-visible { outline:1px solid var(--accent); outline-offset:3px; }

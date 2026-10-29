@@ -19,3 +19,4 @@
 .music-visualizer:not(.music-visualizer-bottom) { position: relative; z-index: 2; margin-top: -48px; }
 .music-visualizer.music-visualizer-mini { margin-top: -44px; }
 .lyric-transport > .music-visualizer { flex-shrink: 0; }
+.lyric-transport > .music-visualizer:not(.music-visualizer-bottom) { height: 56px; margin-top: -24px; }

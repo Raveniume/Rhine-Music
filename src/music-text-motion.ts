@@ -56,7 +56,12 @@ export function setupMusicTextMotion(root: HTMLElement) {
     let current = 1, animated = false, duration = motion.duration;
     let animation: Animation | undefined;
     const format = (value: number) => String(value).padStart(digits, '0');
-    element.textContent = format(current);
+    const rest = () => {
+      const strip = document.createElement('span'); strip.className = 'selection-number-strip';
+      const face = document.createElement('span'); face.textContent = format(current); strip.append(face);
+      element.replaceChildren(strip);
+    };
+    rest();
     return {
       update(options: {value?: number; animated?: boolean; duration?: number; direction?: string}) {
         if (options.animated !== undefined) animated = options.animated;
@@ -65,7 +70,7 @@ export function setupMusicTextMotion(root: HTMLElement) {
         const previous = current; current = options.value;
         animation?.cancel();
         element.setAttribute('aria-label', format(current));
-        if (!animated) { element.textContent = format(current); return; }
+        if (!animated) { rest(); return; }
         const down = options.direction === 'down' || options.direction === 'auto' && current < previous;
         const strip = document.createElement('span'); strip.className = 'selection-number-strip';
         for (const value of down ? [current, previous] : [previous, current]) {
@@ -75,7 +80,7 @@ export function setupMusicTextMotion(root: HTMLElement) {
         const from = down ? '-50%' : '0%', to = down ? '0%' : '-50%';
         strip.style.transform = 'translateY(' + to + ')';
         animation = strip.animate([{transform:'translateY('+from+')'}, {transform:'translateY('+to+')'}], {duration, easing:'cubic-bezier(.22,1,.36,1)'});
-        animation.onfinish = () => { element.textContent = format(current); animation = undefined; };
+        animation.onfinish = () => { rest(); animation = undefined; };
       },
       destroy() { animation?.cancel(); element.textContent = format(current); }
     };

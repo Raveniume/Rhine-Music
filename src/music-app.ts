@@ -310,6 +310,7 @@ let playlistPlaybackId: string | undefined, followedPlaylistTrack: string | unde
 let playlistSelectionEpoch = 0, playlistRenderTimer: ReturnType<typeof setTimeout> | undefined;
 let playlistNavigationTarget: { row: number; song: number; cell: { lane: number; row: number } } | undefined;
 let queueView = false, searchShelfActive = false;
+let searchReturn: { destination: BrowseReturn; mode: 'archive' | 'detail'; detailRow?: number; scroll: number } | undefined;
 let queueActivated = false;
 let queueSource: PlaybackOrigin | undefined;
 type SearchShelf = { tracks: import('./music-types').MusicTrack[]; name: string; provider: MusicProvider };
@@ -388,6 +389,7 @@ stage.innerHTML = `
       <button data-action="search" class="icon-button" aria-label="搜索" title="搜索音乐">${icons.search}</button>
       <button data-action="playlists" class="icon-button" id="my-playlists-button" hidden aria-label="我的歌单">${svg('<path d="M12 21a9 9 0 1 1 9-9"/><circle cx="12" cy="12" r="3"/><path d="M15 15h7M15 18h7M15 21h7"/>')}</button>
       <button data-action="settings" class="icon-button" aria-label="设置" title="设置">${icons.settings}</button>
+      ${isDesktop() && /Windows/i.test(navigator.userAgent) ? `<button data-action="toggle-taskbar-lyrics" class="icon-button taskbar-lyrics-toggle" aria-label="桌面歌词" title="桌面歌词" aria-pressed="${preferences.taskbarLyrics}">${svg('<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M7 10h10M7 14h6"/>')}</button>` : ''}
       <div class="minimal-transport" role="group" aria-label="音乐播放"><button type="button" data-action="locate-playing" id="transport-track" class="transport-track" aria-label="定位当前歌曲" aria-hidden="true" disabled><span id="transport-track-label"></span></button><button data-action="play-pause" id="play-pause" aria-label="播放" aria-pressed="false"><span class="transport-glyph transport-play" aria-hidden="true">${icons.play}</span><span class="transport-glyph transport-pause" aria-hidden="true">${icons.pause}</span></button><button data-action="stop" id="stop-playback" aria-label="停止">${icons.stop}</button><button data-action="play-queue" class="icon-button" id="play-queue-button" aria-label="播放列表">${svg('<path d="M4 6h12M4 12h12M4 18h7M17 15l4 3-4 3z"/>')}<small id="queue-count" hidden>0</small></button>${transportVolumeMarkup(preferences.volume)}<div class="mini-playback-below" id="mini-playback-below" data-song="" hidden><span data-mini-lyric></span><input class="playback-seek" type="range" min="0" max="1" value="0" step="0.1" aria-label="歌曲播放进度" disabled></div></div>
       <button data-action="netease-login" id="netease-login-button" aria-label="登录">${icons.account}<span>登录</span></button>
     </nav>
@@ -401,6 +403,7 @@ stage.innerHTML = `
     <nav class="overview-controls" aria-label="总览列导航"><button data-action="genre-prev" aria-label="总览上一列">←</button><button data-action="genre-next" aria-label="总览下一列">→</button></nav>
   </section>
   <section id="music-browse" class="music-browse" aria-label="专辑浏览">
+    <button class="search-browse-return" data-action="search-return" hidden>← 返回之前的位置</button>
     <div class="music-browse-veil" aria-hidden="true"></div>
     <div class="album-callout"><p class="music-eyebrow">MUSIC ARCHIVE <span>／</span> <button class="detail-breadcrumb" data-action="open-current-playlist" id="selection-genre"></button></p>
       <div class="selection-rule"><span id="selection-code">ALBUM <span id="selection-code-number">001</span></span><span id="selection-format"></span></div>
@@ -586,7 +589,7 @@ let detailIdentity = "",
 let playlistList: MusicPlaylistList | undefined;
 let playlistDetail: { row: number; loading: boolean; error: string } | undefined;
 let playlistDetailEpoch = 0;
-async function openPlaylistDetail(row: number) {
+async function openPlaylistDetail(row: number, song = 0) {
   const playlist = playlistLibrary.playlists[row];
   if (!playlist || !accountActive) return;
   const samePlaylist = playlistDetail?.row === row && !overview && presentation.openingOrDetail;
@@ -602,7 +605,7 @@ async function openPlaylistDetail(row: number) {
   // fetch continue in parallel, so the detail surface never waits on camera
   // settling before showing useful content.
   renderDetail();
-  const navigation = samePlaylist ? Promise.resolve() : navigatePlaylist(row, 0);
+  const navigation = samePlaylist ? Promise.resolve() : navigatePlaylist(row, song);
   if (!presentation.openingOrDetail) presentation.open();
   // The playlist is a readable list while the shelf camera is still moving.
   // Do not make opening it depend on the physical cover's readiness gate.
@@ -619,6 +622,7 @@ async function openPlaylistDetail(row: number) {
   if (epoch !== playlistDetailEpoch || key !== accountKey || !playlistDetail) return;
   playlistDetail.loading = false;
   renderDetail();
+  await navigation;
 }
 function renderPlaylistDetail() {
   const detail = playlistDetail!, playlist = playlistLibrary.playlists[detail.row];
@@ -1155,6 +1159,7 @@ function updateStatus() {
   }
 }
 function updateSelection(navigation?: ArchiveNavigation) {
+  stage.querySelector<HTMLButtonElement>('[data-action="search-return"]')!.hidden = !searchShelfActive || !searchReturn;
   queueView = !!currentAlbum()?.playback?.queueShelf;
   updateQueueControls();
   syncAlbumNavigation();
@@ -1320,7 +1325,7 @@ function modelPosition(position: number, count: number) {
 }
 /** Pending detail/return requests already define the next input boundary. */
 function syncAlbumNavigation() {
-  $('.music-back').textContent = queueView ? '← 返回播放队列' : searchShelfActive ? '← 返回搜索结果' : accountView ? '← 返回歌单' : '← 返回专辑架';
+  $('.music-back').textContent = queueView ? '← 返回播放队列' : searchShelfActive ? '← 返回之前的位置' : accountView ? '← 返回歌单' : '← 返回专辑架';
   if (currentAlbum()?.playlistCell) { syncPlaylistNavigation(); return; }
   const playback = !!records[0]?.album?.playback;
   $('.music-counter .music-eyebrow').textContent = 'ALBUM / SELECT';
@@ -2063,7 +2068,7 @@ function onlineAccountChanged(provider: MusicProvider, account: NeteaseAccount) 
   playlistLibrary.setProvider(provider); onlineSearch.setLogin(platformLogins[provider]);
   // An account change invalidates its search queue as well as private playlist pages.
   onlineSearch.clear();
-  followedPlaylistTrack = undefined; playlistPlaybackId = undefined; playbackVisualKey = ''; queueView = false; queueActivated = false; searchShelfActive = false; queueSource = undefined; queueReturn = undefined; searchShelves.clear(); searchShelf = undefined; player.clearQueue();
+  followedPlaylistTrack = undefined; playlistPlaybackId = undefined; playbackVisualKey = ''; queueView = false; queueActivated = false; searchShelfActive = false; queueSource = undefined; queueReturn = undefined; searchShelves.clear(); searchShelf = undefined; searchReturn = undefined; player.clearQueue();
   if (accountActive) {
     accountView = true; followedPlaylistTrack = undefined;
     const key = accountKey;
@@ -2174,7 +2179,9 @@ async function returnQueueBrowse() {
   }
 }
 async function showSearchShelf(source: SearchShelf, index = 0) {
+  if (!searchReturn) captureSearchReturn();
   queueView = false; accountView = false; searchShelfActive = true; searchShelf = source; browseLibraryDuringPlayback = true;
+  stage.querySelector<HTMLButtonElement>('[data-action="search-return"]')!.hidden = !searchReturn;
   const generation = ++playbackVisualGeneration;
   playbackVisualTask = playbackVisualTask.then(async () => {
     if (generation !== playbackVisualGeneration || !scene || frameDisposed || !searchShelfActive) return;
@@ -2199,9 +2206,26 @@ async function openQueueSource() {
   await returnQueueBrowse();
 }
 let locatePlayingEpoch = 0;
+function captureSearchReturn() {
+  if (searchShelfActive) return;
+  searchReturn = { destination: snapshotBrowse(), mode, detailRow: playlistDetail?.row, scroll: $('#album-detail-content').scrollTop };
+}
+async function returnFromSearch() {
+  const saved = searchReturn;
+  if (!saved) return;
+  searchReturn = undefined;
+  stage.querySelector<HTMLButtonElement>('[data-action="search-return"]')!.hidden = true;
+  setMode('archive');
+  queueReturn = saved.destination;
+  await returnQueueBrowse();
+  if (saved.detailRow !== undefined && accountActive) await openPlaylistDetail(saved.detailRow, saved.destination.kind === 'playlist' ? saved.destination.song : 0);
+  else if (saved.mode === 'detail') setMode('detail');
+  $('#album-detail-content').scrollTop = saved.scroll;
+}
 async function locatePlayingTrack() {
   const epoch = ++locatePlayingEpoch, track = playerState.currentTrack;
   if (!track) return;
+  if ((track.queueEntry?.origin ?? track.queueOrigin)?.type === 'search') captureSearchReturn();
   const key = queueEntryKey(track);
   playlistDetailEpoch++; playlistList?.destroy(); playlistList = undefined; playlistDetail = undefined;
   const origin = track.queueEntry?.origin ?? track.queueOrigin;
@@ -2889,8 +2913,16 @@ document.addEventListener("click", (e) => {
     return;
   }
   const action = target.dataset.action;
+  if (action === 'search-return') { void returnFromSearch().catch(error => notify(String(error))); return; }
+  if (action === 'toggle-taskbar-lyrics') {
+    preferences.taskbarLyrics = !preferences.taskbarLyrics; savePrefs();
+    target.setAttribute('aria-pressed', String(preferences.taskbarLyrics));
+    void configureTaskbarLyrics(preferences.taskbarLyrics, preferences.taskbarLyrics).catch(error => notify(String(error)));
+    return;
+  }
   if (action === 'restore-taskbar-lyrics') {
     preferences.taskbarLyrics = true; savePrefs();
+    stage.querySelector('[data-action="toggle-taskbar-lyrics"]')?.setAttribute('aria-pressed', 'true');
     const toggle = document.querySelector<HTMLInputElement>('#taskbar-lyrics-enabled'); if (toggle) toggle.checked = true;
     void configureTaskbarLyrics(true, true).then(() => { $('#taskbar-lyrics-status').textContent = '已重新显示任务栏歌词'; }).catch(error => notify(String(error)));
     return;
@@ -3042,6 +3074,7 @@ document.addEventListener("click", (e) => {
       if (currentAlbum()?.playlistCell || currentAlbum()?.playback || currentAlbum()?.tracks[0]?.onlineSource) void startSelectedSong();
       break;
     case "back":
+      if (searchShelfActive && searchReturn) { void returnFromSearch(); break; }
       setMode("archive");
       break;
     case "model-viewer":
@@ -3359,6 +3392,7 @@ document.addEventListener("change", (e) => {
   }
   if (el.id === "taskbar-lyrics-enabled") {
     preferences.taskbarLyrics = el.checked; savePrefs();
+    stage.querySelector('[data-action="toggle-taskbar-lyrics"]')?.setAttribute('aria-pressed', String(el.checked));
     void configureTaskbarLyrics(el.checked, el.checked).catch(error => notify(String(error)));
   }
   if (el.id === "page-text-mask") {
