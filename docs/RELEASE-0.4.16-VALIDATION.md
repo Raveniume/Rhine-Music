@@ -18,3 +18,9 @@
 
 - 用户已手动安装 0.4.15；本次 0.4.16 测试运行的是隔离的便携候选包。此前自动审批拒绝执行下载并运行安装器的命令，未改用其他路径绕过。**inAppUpdateChecked=false；installerRuntimeChecked=false**，完整应用内更新仍需验收。
 - Windows 无法验证 Mac Gatekeeper、Developer ID 签名、公证或实机启动。**macRuntimeChecked=false**；继续停止自动发布未验证 DMG。Mac 接手者应按照 [MACOS-RELEASE.md](MACOS-RELEASE.md) 完成签名、公证、架构与启动检查，不能把清除隔离属性当作发布修复。
+
+## 发布结果
+
+- 标签 `v0.4.16` 指向 `f2f7098`；[Actions 40801208449](https://github.com/Raveniume/Rhine-Music/actions/runs/40801208449) 成功，[Release](https://github.com/Raveniume/Rhine-Music/releases/tag/v0.4.16) 已公开。
+- 独立下载公开安装包时遇到传输中断，HTTP Range 续传后完成。大小 143,211,787 字节，SHA-256 与公开 update.json 一致：`4804328bd9b34592a91feb1fcdf358303e691ee71b3c5f7b83faf2bbe58d4885`。没有执行安装器，此项不计为应用内更新验收。
+- 发布后只读核对，本机安装清单仍为 0.4.15（源提交 `10ae4ef`），已请求用户手动执行应用内更新，等待结果。
