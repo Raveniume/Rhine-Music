@@ -1,5 +1,15 @@
 # macOS 发布接手规范
 
+## 2026-10-30 双端构建补充
+
+已添加 macOS 平台配置、菜单栏歌词、原生窗口按钮、Dock 恢复和独立 CI。构建入口及目录布局见 [README.macos.md](../README.macos.md)。`npm run desktop:build` 在 Mac 生成明确标记的未公证 preview；`npm run release:macos` 仍要求 Developer ID 和公证配置，保留下述正式发布门槛。Mac 的内嵌 Node 现为 `runtime/node`，下方 `node.exe` 路径仅用于诊断历史包。
+
+没有 Apple Developer Program 会员时，无法完成 Developer ID 正式签发。开通后在 Apple Developer 的 Certificates 创建 **Developer ID Application**（本项目不需要 Installer 证书），提交本机 CSR，下载 `.cer` 并与原私钥导入登录钥匙串。公证凭据通过 `xcrun notarytool store-credentials rhine-notary` 交互保存，密码不写入脚本、仓库或聊天。
+
+本机可先用 `security find-identity -v -p codesigning` 检查身份。证书、公钥请求和私钥不要存放在仓库；只有构建脚本与非敏感的配置示例进入版本控制。Apple 官方步骤：[创建 Developer ID 证书](https://developer.apple.com/help/account/certificates/create-developer-id-certificates/)、[公证工作流](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)。
+
+## 历史问题与正式发布要求
+
 2026-10-28：用户反馈旧 DMG 提示“Rhine Music 已损坏”。现有 CI 只运行了 Tauri 打包，未配置 Developer ID、公证或 Gatekeeper 验收，内嵌 Node 也没有独立的签名步骤。Windows 无法读取该 Mac 的签名诊断，因此这只是已确认的发布流程缺口，不是已经证明的唯一故障原因。**旧 Mac 包不能视为验收通过；从 0.4.14 起暂停自动附带 Mac DMG。** Windows 发布继续独立进行，旧标签与附件保留。
 
 ## 先诊断用户下载的旧包
@@ -31,7 +41,7 @@ node scripts/release-macos.mjs
 
 脚本先打包公开运行时，再给内嵌 Node 添加 hardened runtime / JIT 签名，最后封装签名 app。随后公证并附加 app 票据、制作 DMG、公证并附加 DMG 票据，严格验证签名及 Gatekeeper。任何一步失败都会停止，不发布附件。输出按版本和架构命名；已有目录不会覆盖。`verification.json` 的 `runtimeChecked` 默认为 false。
 
-此脚本在 Windows 仅完成语法检查，**尚未在 Mac 执行**。需要 Mac 维护者验证 Node JIT、签名和资源封装。先单独发布 arm64 或 x64，架构写入文件名；不能将单架构 Node 塞入所谓 universal 包。没有 Developer ID / 公证条件时，只提供源码构建说明，不宣称 DMG 可以直接安装。
+本次已在 Apple Silicon Mac 完成 preview 构建、嵌套代码签名验证和合成曲库启动测试；Developer ID、公证与干净机器下载验收仍未完成。先单独发布 arm64 或 x64，架构写入文件名；不能将单架构 Node 塞入所谓 universal 包。没有 Developer ID / 公证条件时，preview 仅用于本地测试，不宣称下载后可直接安装，不作为正式发布附件。
 
 ## 实机发布门槛
 

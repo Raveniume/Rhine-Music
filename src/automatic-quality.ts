@@ -1,7 +1,7 @@
 import { matchingPreset, normalizeQuality, qualityPresets, type RenderQuality, type QualityPreset } from './render-quality.ts';
 
 export type QualityMode = 'auto' | 'manual';
-type Device = { renderer: string; unmasked: boolean; cores?: number; memoryGB?: number; nativePixels: number };
+type Device = { renderer: string; unmasked: boolean; cores?: number; memoryGB?: number; nativePixels: number; platform?: string };
 
 /** A conservative capability heuristic, not a benchmark or installed-GPU guess.
  * Always use the adapter that actually owns the WebGL context. */
@@ -24,6 +24,10 @@ export function automaticQuality(device: Device) {
   if (constrained && preset === 'discretePlus') preset = 'discrete';
   if (constrained && tier !== 'entry-discrete' && tier !== 'discrete') preset = 'performance';
   const quality = normalizeQuality(qualityPresets[preset]);
+  // Retina WKWebView can otherwise spend 3.7M pixels per frame on the glass
+  // scene. Bound only the automatic Mac profile; retain sharp DOM text,
+  // physical materials and every explicit manual quality choice.
+  if (device.platform === 'macos' && preset === 'balanced') quality.pixelBudget = 2_073_600;
   // An unusually large output on a small/unknown GPU must not inflate the 3D
   // budget. Physical glass, SMAA and the independent clear-cover pass remain.
   if (device.nativePixels > 8_294_400 && preset === 'balanced') quality.scale = 85;

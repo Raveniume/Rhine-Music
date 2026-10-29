@@ -14,7 +14,7 @@
     "installer:build": "node scripts/build-windows-installer.mjs",
     "check:together": "node --experimental-strip-types --test scripts/check-listen-together.mjs scripts/check-playlist-management.mjs scripts/check-music-player.mjs scripts/check-music-browser-gapless.mjs && node scripts/check-listen-together-ui.mjs",
     "desktop:prepare": "npm run build && node scripts/prepare-desktop.mjs",
-    "desktop:build": "tauri build --no-bundle -- --locked && node scripts/package-desktop.mjs",
+    "desktop:build": "node scripts/build-desktop.mjs",
     "desktop:dev": "npm run desktop:prepare && tauri dev --no-dev-server",
     "check:windows": "node --experimental-strip-types --test scripts/check-windows.mjs",
     "check:gpu-budget": "node --experimental-strip-types --test scripts/check-gpu-budget.mjs",
@@ -54,7 +54,11 @@
     "check:lyrics": "node --experimental-strip-types --test scripts/check-lyrics.mjs",
     "check:v040": "npm run check:v041",
     "check:startup": "node --experimental-strip-types --test scripts/check-startup-responsiveness.mjs && node scripts/check-music-startup.mjs && node scripts/check-music-renderer-startup.mjs && node scripts/check-quality.mjs && node scripts/check-startup-responsiveness-ui.mjs",
-    "check:v041": "npm run check:music && npm run check:audio && npm run check:overview && npm run check:cover && npm run check:startup && npm run check:lighting && npm run check:interaction && npm run check:viewport && npm run check:content && npm run check:credits && node scripts/check-music-launcher.mjs"
+    "check:v041": "npm run check:music && npm run check:audio && npm run check:overview && npm run check:cover && npm run check:startup && npm run check:lighting && npm run check:interaction && npm run check:viewport && npm run check:content && npm run check:credits && node scripts/check-music-launcher.mjs",
+    "desktop:build:windows": "tauri build --no-bundle -- --locked && node scripts/package-desktop.mjs",
+    "desktop:build:macos": "node scripts/release-macos.mjs --preview",
+    "release:macos": "node scripts/release-macos.mjs",
+    "check:desktop-platforms": "node --experimental-strip-types --test scripts/check-desktop-platforms.mjs"
   },
   "dependencies": {
     "@applemusic-like-lyrics/core": "0.6.0",

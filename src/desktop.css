@@ -14,6 +14,11 @@ html:has(.music-app[data-theme="night"]) .desktop-chrome { color: #b5bfcc; }
 html:has(.music-app[data-theme="night"]) .desktop-chrome button:not([data-window="close"]):hover { background: rgba(255,255,255,.09); }
 .desktop-folder-button { margin: 8px 0 2px; }
 
+/* macOS uses the native traffic lights, including native fullscreen behavior. */
+.rhine-macos .desktop-chrome nav { display: none; }
+.rhine-macos .desktop-drag { inset: 0 0 0 82px; }
+.rhine-macos.desktop-fullscreen .desktop-chrome { display: none; }
+
 .desktop-close-prompt {
   position: fixed;
   inset: 0;

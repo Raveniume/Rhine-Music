@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
-const server = await createServer({ logLevel: 'error', server: { host: '127.0.0.1', port: 0, watch: { ignored: ['**/src-tauri/**','**/artifacts/**','**/release/**','**/desktop-runtime/**'] } } });
+const server = await createServer({ logLevel: 'error', optimizeDeps: { entries: ['index.html'] }, server: { host: '127.0.0.1', port: 0, watch: { ignored: ['**/src-tauri/**','**/artifacts/**','**/release/**','**/desktop-runtime/**'] } } });
 await server.listen();
-const browser = await chromium.launch({ executablePath: 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', headless: true });
+const browser = await chromium.launch({ executablePath: process.env.RHINE_BROWSER || (process.platform === 'win32' ? 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe' : undefined), headless: true, args: ['--mute-audio'] });
 try {
   for (const platform of ['Windows NT 10.0', 'Macintosh; Intel Mac OS X 14_0']) {
     const page = await browser.newPage({ userAgent: `Mozilla/5.0 (${platform}) AppleWebKit/537.36 Chrome/130 Safari/537.36` });

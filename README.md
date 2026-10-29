@@ -1,14 +1,14 @@
-# Rhine Music · Windows
+# Rhine Music · Windows / macOS
 
 把音乐放进三维玻璃专辑架，浏览自己的收藏。
 
 这是 [RonaldDeng/Rhine-Music-Demo](https://github.com/RonaldDeng/Rhine-Music-Demo) V0.4.1 的 Windows 社区衍生版，当前由 [Raveniume/Rhine-Music](https://github.com/Raveniume/Rhine-Music) 继续维护；视觉与渲染基础来自 [LBEILC/RhineLabUI](https://github.com/LBEILC/RhineLabUI)。本仓库与上游作者、音乐平台及原作品牌方没有官方合作关系。
 
-**源码与更新：[Raveniume/Rhine-Music](https://github.com/Raveniume/Rhine-Music)** · [使用说明](README.windows.md) · [平台与权利说明](PLATFORM-NOTICE.md) · [隐私说明](PRIVACY.md) · [资源来源](NOTICE.md)
+**源码与更新：[Raveniume/Rhine-Music](https://github.com/Raveniume/Rhine-Music)** · [Windows 使用说明](README.windows.md) · [macOS 构建与使用](README.macos.md) · [平台与权利说明](PLATFORM-NOTICE.md) · [隐私说明](PRIVACY.md) · [资源来源](NOTICE.md)
 
 ## 当前版本
 
-**0.4.14 · 2026-10-28**。这是开发预览版，平台接口、网络、账号权限和显卡驱动会影响实际表现，尚未完成所有电脑的兼容性验收。
+**源码版本 0.4.18**（macOS 适配为未公证测试版）。这是开发预览版，平台接口、网络、账号权限和显卡驱动会影响实际表现，尚未完成所有电脑的兼容性验收。
 
 - 三维玻璃专辑架、浅色／深色主题、封面、歌词、开场动画。
 - 顶部账号入口支持选择网易云、QQ 音乐和波点音乐；搜索与歌单使用当前平台账号。
@@ -31,7 +31,7 @@
 
 ## 下载与安装
 
-**macOS 提示“已损坏”**：旧 DMG 没有完成签名、公证与实机验收。新版暂停自动发布 Mac 安装包；Mac 维护者请按 [macOS 发布接手规范](docs/MACOS-RELEASE.md) 诊断、签名、公证后重新验收。不要通过关闭系统安全检查解决。
+**macOS**：已提供独立的 arm64 / x64 构建入口和 CI 测试包，见 [macOS 说明](README.macos.md)。测试包为 ad-hoc 签名，尚未公证；正式分发仍需完成 [签名、公证和实机验收](docs/MACOS-RELEASE.md)。旧 DMG 的“已损坏”问题不能通过关闭系统安全检查解决。Windows 发布流程独立运行。
 
 
 普通用户请下载 **[最新 Windows 安装包](https://github.com/Raveniume/Rhine-Music/releases/latest)**，双击安装，不需要下载 GitHub 自动生成的 Source code 压缩包。

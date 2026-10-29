@@ -1,3 +1,4 @@
+import { isMacDesktop } from './desktop-platform';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
@@ -27,7 +28,7 @@ function renderUpdateState() {
 function setUpdateMessage(message: string) { updateMessage = message; renderUpdateState(); }
 
 export function aboutMarkup(version: string) {
-  return `<section class="panel-section about-section" data-settings-group="about"><h3>RhineMusic</h3><p class="about-version">当前版本 <strong>V${version}</strong></p><p>三维档案架音乐终端，保留本地曲库、网易云歌单与桌面歌词能力。</p><div class="about-actions"><button class="primary-button" data-action="check-update" aria-busy="${checking}">${updateButton}</button><a class="text-button about-github-link" href="${RHINE_REPOSITORY}" target="_blank" rel="noopener">打开 GitHub ↗</a></div><p id="update-status" class="scan-status" role="status" aria-live="polite">${escapeMarkup(updateMessage)}${releaseLink ? `<a href="${releaseLink}" target="_blank" rel="noopener">查看适用安装包 ↗</a>` : ''}</p><details open><summary>来源与许可</summary><p>视觉基于 RhineLabUI、Rhine-Music-Demo；播放器交互参考 rhine-lab-music；歌词参考 AMLL；桌面任务栏歌词参考 SPlayer-Next 与 TaskbarLyrics。代码与素材许可以仓库中的 LICENSE、NOTICE 和第三方声明为准。</p></details></section>`;
+  return `<section class="panel-section about-section" data-settings-group="about"><h3>RhineMusic</h3><p class="about-version">当前版本 <strong>V${version}</strong></p><p>三维档案架音乐终端，保留本地曲库、网易云歌单与桌面歌词能力。</p><div class="about-actions"><button class="primary-button" data-action="check-update" aria-busy="${checking}">${updateButton}</button><a class="text-button about-github-link" href="${RHINE_REPOSITORY}" target="_blank" rel="noopener">打开 GitHub ↗</a></div><p id="update-status" class="scan-status" role="status" aria-live="polite">${escapeMarkup(updateMessage)}${releaseLink ? `<a href="${releaseLink}" target="_blank" rel="noopener">查看适用安装包 ↗</a>` : ''}</p>${isMacDesktop() ? '<p class="quality-note">macOS 账号登录仅在本次运行期间保留，退出后需重新扫码。</p>' : ''}<details open><summary>来源与许可</summary><p>视觉基于 RhineLabUI、Rhine-Music-Demo；播放器交互参考 rhine-lab-music；歌词参考 AMLL；桌面任务栏歌词参考 SPlayer-Next 与 TaskbarLyrics。代码与素材许可以仓库中的 LICENSE、NOTICE 和第三方声明为准。</p></details></section>`;
 }
 
 const versionKey = (value: string) => value.replace(/^v/i, '').split(/[+-]/)[0].split('.').map(part => Number(part) || 0);
@@ -55,7 +56,7 @@ export async function checkForUpdates(current: string, interactive = true) {
     if (!newer(remote, current)) { setUpdateMessage(`已是最新版本 V${current}`); return false; }
     if (!/Windows/i.test(navigator.userAgent)) {
       releaseLink = `${RHINE_REPOSITORY}/releases/tag/v${remote}`;
-      setUpdateMessage(`发现新版本 V${remote}。`);
+      setUpdateMessage(isMacDesktop() ? `发现新版本 V${remote}，请在发布页选择与你的 Mac 架构对应的 DMG。` : `发现新版本 V${remote}。`);
       return true;
     }
     const assets = Array.isArray(release.assets) ? release.assets : [];

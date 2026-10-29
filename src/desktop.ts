@@ -5,6 +5,7 @@ import { normalizeWindowDisplayMode, windowExpandAction, type WindowDisplayMode 
 export { normalizeWindowDisplayMode } from './window-display-mode';
 export type { WindowDisplayMode } from './window-display-mode';
 
+import { isMacDesktop, backgroundCloseLabel } from './desktop-platform';
 export const isDesktop = () => "__TAURI_INTERNALS__" in window;
 export const consumeFirstLaunch = async () => isDesktop() ? invoke<boolean>('desktop_consume_first_launch') : false;
 export type CloseBehavior = 'ask' | 'tray' | 'exit';
@@ -31,7 +32,7 @@ function syncDisplayControls() {
 export function windowDisplayMarkup() {
   return `<label class="settings-row"><span>窗口放大方式</span><select id="window-display-mode" aria-label="窗口放大方式">${([
     ['maximized', '最大化模式'], ['fullscreen', '全屏模式'],
-  ] as const).map(([value, label]) => `<option value="${value}" ${value === preferredWindowMode ? 'selected' : ''}>${label}</option>`).join('')}</select></label><p class="quality-note">最大化保留任务栏；全屏覆盖任务栏。</p>`;
+  ] as const).map(([value, label]) => `<option value="${value}" ${value === preferredWindowMode ? 'selected' : ''}>${label}</option>`).join('')}</select></label><p class="quality-note">${isMacDesktop() ? '最大化保留菜单栏与 Dock；全屏进入独立空间。' : '最大化保留任务栏；全屏覆盖任务栏。'}</p>`;
 }
 export function setWindowDisplayMode(mode: WindowDisplayMode) {
   preferredWindowMode = normalizeWindowDisplayMode(mode);
@@ -48,10 +49,11 @@ function showError(error: unknown) {
 export function mountDesktop() {
   if (!isDesktop()) return;
   document.documentElement.classList.add("rhine-desktop");
+  document.documentElement.classList.toggle("rhine-macos", isMacDesktop());
   const closePrompt = document.createElement('div');
   closePrompt.className = 'desktop-close-prompt';
   closePrompt.hidden = true;
-  closePrompt.innerHTML = `<section class="desktop-close-dialog" role="dialog" aria-modal="true" aria-labelledby="desktop-close-title"><div class="desktop-close-dialog-heading"><div><small>RHINE MUSIC</small><h2 id="desktop-close-title">关闭 RhineMusic</h2></div><button type="button" data-close-choice="cancel" aria-label="取消">×</button></div><p>你希望如何处理正在播放的音乐？</p><label class="desktop-close-remember"><input type="checkbox" data-close-remember>记住我的选择</label><div class="desktop-close-actions"><button type="button" data-close-choice="tray">最小化到托盘</button><button type="button" class="primary-button" data-close-choice="exit">彻底退出</button></div></section>`;
+  closePrompt.innerHTML = `<section class="desktop-close-dialog" role="dialog" aria-modal="true" aria-labelledby="desktop-close-title"><div class="desktop-close-dialog-heading"><div><small>RHINE MUSIC</small><h2 id="desktop-close-title">关闭 RhineMusic</h2></div><button type="button" data-close-choice="cancel" aria-label="取消">×</button></div><p>你希望如何处理正在播放的音乐？</p><label class="desktop-close-remember"><input type="checkbox" data-close-remember>记住我的选择</label><div class="desktop-close-actions"><button type="button" data-close-choice="tray">${backgroundCloseLabel()}</button><button type="button" class="primary-button" data-close-choice="exit">彻底退出</button></div></section>`;
   document.body.append(closePrompt);
   const remember = closePrompt.querySelector<HTMLInputElement>('[data-close-remember]')!;
   closePrompt.addEventListener('click', event => {
