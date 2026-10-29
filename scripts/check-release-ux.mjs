@@ -109,6 +109,10 @@ try {
     });
     assert.ok(Math.abs(geometry.brand-geometry.toggle)<1,JSON.stringify({viewport,geometry}));
     assert.ok(Math.abs(geometry.brand-geometry.overview)<1,JSON.stringify({viewport,geometry}));
+    const iconCenters=await page.locator('.music-topnav > .icon-button:visible').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};}));
+    assert.ok(Math.max(...iconCenters.map(p=>p.y))-Math.min(...iconCenters.map(p=>p.y))<1,'Header icons share a center line');
+    const distances=iconCenters.slice(1).map((p,i)=>p.x-iconCenters[i].x);
+    assert.ok(Math.max(...distances)-Math.min(...distances)<1,'Header navigation icons have equal spacing');
     await page.screenshot({path:`${output}/home-${viewport.width}.png`});
     await page.locator('.open-album').click();
     await page.locator('#song-tab-info').waitFor({state:'visible'});
