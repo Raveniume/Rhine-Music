@@ -1,4 +1,16 @@
 /* Primary controls float over the original scene; library and themes live in settings. */
+.music-app .music-topnav { --top-control-size:32px; gap:8px; }
+.music-app .music-topnav > .icon-button,
+.music-app .music-topnav .minimal-transport > button:not(.transport-track),
+.music-app .music-topnav .transport-volume-button {
+  box-sizing:border-box; width:var(--top-control-size); min-width:var(--top-control-size);
+  height:32px; min-height:32px; padding:0; margin:0;
+  display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;
+}
+.music-app .music-topnav .minimal-transport { gap:8px; padding-left:12px; margin-inline:4px; }
+.music-app[data-layout="portrait"] .music-topnav { --top-control-size:28px; }
+.music-app[data-layout="portrait"] .music-topnav:has(.taskbar-lyrics-toggle) { grid-template-columns:repeat(3,28px) minmax(0,1fr) minmax(80px,122px); }
+.music-app[data-layout="portrait"] .music-topnav:has(.taskbar-lyrics-toggle):has(#my-playlists-button:not([hidden])) { grid-template-columns:repeat(4,28px) minmax(0,1fr) minmax(80px,122px); }
 .music-app #netease-login-button {
   flex-shrink: 0;
   min-height: 32px;
