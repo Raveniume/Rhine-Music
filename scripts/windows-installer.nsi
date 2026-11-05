@@ -10,23 +10,23 @@ SetDatablockOptimize on
 !include "WinVer.nsh"
 !define APPID "local.rhine.music.windows.preview"
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\RhineMusicWindowsPreview"
-Name "Rhine Music 体验版"
+Name "Rhine Music"
 OutFile "${SETUP_OUTPUT}"
 InstallDir "$LOCALAPPDATA\Programs\Rhine Music Preview"
 InstallDirRegKey HKCU "${UNINSTALL_KEY}" "InstallLocation"
-BrandingText "Rhine Music · Windows 社区版"
+BrandingText "Rhine Music · Windows"
 VIProductVersion "${APP_FILE_VERSION}"
-VIAddVersionKey /LANG=2052 "ProductName" "Rhine Music Windows Preview"
+VIAddVersionKey /LANG=2052 "ProductName" "Rhine Music"
 VIAddVersionKey /LANG=2052 "FileDescription" "Rhine Music ${APP_VERSION} 安装程序"
 VIAddVersionKey /LANG=2052 "FileVersion" "${APP_FILE_VERSION}"
 VIAddVersionKey /LANG=2052 "LegalCopyright" "Rhine Music contributors; see bundled notices"
 !define MUI_ICON "${APP_ICON}"
 !define MUI_UNICON "${APP_ICON}"
 !define MUI_ABORTWARNING
-!define MUI_WELCOMEPAGE_TITLE "安装 Rhine Music 体验版"
+!define MUI_WELCOMEPAGE_TITLE "安装 Rhine Music"
 !define MUI_WELCOMEPAGE_TEXT "将安装 ${APP_VERSION}。$\r$\n$\r$\n包含播放器和本机运行环境，无需另装 Node.js。缺少 WebView2 时会提示安装 Microsoft 官方运行时。$\r$\n$\r$\n播放器正在运行时，可确认关闭后继续安装。个人音乐、登录状态与设置保留在原来的用户数据目录。"
 !insertmacro MUI_PAGE_WELCOME
-!define MUI_LICENSEPAGE_TEXT_TOP "请阅读本地体验版说明、平台适配范围及隐私信息。"
+!define MUI_LICENSEPAGE_TEXT_TOP "请阅读使用说明、平台适配范围及隐私信息。"
 !insertmacro MUI_PAGE_LICENSE "${INSTALL_NOTES}"
 !insertmacro MUI_PAGE_COMPONENTS
 !define MUI_PAGE_CUSTOMFUNCTION_LEAVE ValidateDirectory
@@ -70,7 +70,7 @@ Function ValidateDirectory
     ReadINIStr $0 "$INSTDIR\.rhine-installer.ini" "Application" "Id"
     StrCmp $0 "${APPID}" valid invalid
   invalid:
-    MessageBox MB_OK|MB_ICONSTOP "请选择空文件夹，或已由此安装包安装的 Rhine Music Preview 文件夹。不能覆盖其他程序或便携包。" /SD IDOK
+    MessageBox MB_OK|MB_ICONSTOP "请选择空文件夹，或已有的 Rhine Music 安装目录。不能覆盖其他程序或便携包。" /SD IDOK
     SetErrorLevel 2
     Abort
   valid:
@@ -165,7 +165,7 @@ Section "播放器及运行环境（必需）" MainSection
   FileOpen $0 "$INSTDIR\.rhine-first-launch" "w"
   FileClose $0
   WriteUninstaller "$INSTDIR\Uninstall.exe"
-  WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayName" "Rhine Music (Preview)"
+  WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayName" "Rhine Music"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayVersion" "${APP_VERSION}"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "Publisher" "DuoJiuBetter / Rhine Music contributors"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "InstallLocation" "$INSTDIR"
@@ -176,13 +176,17 @@ Section "播放器及运行环境（必需）" MainSection
   WriteRegDWORD HKCU "${UNINSTALL_KEY}" "NoModify" 1
   WriteRegDWORD HKCU "${UNINSTALL_KEY}" "NoRepair" 1
   WriteRegDWORD HKCU "${UNINSTALL_KEY}" "EstimatedSize" ${ESTIMATED_KIB}
-  CreateDirectory "$SMPROGRAMS\Rhine Music Preview"
-  CreateShortcut "$SMPROGRAMS\Rhine Music Preview\Rhine Music.lnk" "$INSTDIR\Rhine Music.exe"
-  CreateShortcut "$SMPROGRAMS\Rhine Music Preview\卸载 Rhine Music.lnk" "$INSTDIR\Uninstall.exe"
+  Delete "$SMPROGRAMS\Rhine Music Preview\Rhine Music.lnk"
+  Delete "$SMPROGRAMS\Rhine Music Preview\卸载 Rhine Music.lnk"
+  RMDir "$SMPROGRAMS\Rhine Music Preview"
+  CreateDirectory "$SMPROGRAMS\Rhine Music"
+  CreateShortcut "$SMPROGRAMS\Rhine Music\Rhine Music.lnk" "$INSTDIR\Rhine Music.exe"
+  CreateShortcut "$SMPROGRAMS\Rhine Music\卸载 Rhine Music.lnk" "$INSTDIR\Uninstall.exe"
 SectionEnd
 
 Section "创建桌面快捷方式" DesktopSection
-  CreateShortcut "$DESKTOP\Rhine Music Preview.lnk" "$INSTDIR\Rhine Music.exe"
+  Delete "$DESKTOP\Rhine Music Preview.lnk"
+  CreateShortcut "$DESKTOP\Rhine Music.lnk" "$INSTDIR\Rhine Music.exe"
 SectionEnd
 
 Function un.onInit
@@ -204,6 +208,10 @@ Section "Uninstall"
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"
   Delete "$DESKTOP\Rhine Music Preview.lnk"
+  Delete "$DESKTOP\Rhine Music.lnk"
+  Delete "$SMPROGRAMS\Rhine Music\Rhine Music.lnk"
+  Delete "$SMPROGRAMS\Rhine Music\卸载 Rhine Music.lnk"
+  RMDir "$SMPROGRAMS\Rhine Music"
   Delete "$SMPROGRAMS\Rhine Music Preview\Rhine Music.lnk"
   Delete "$SMPROGRAMS\Rhine Music Preview\卸载 Rhine Music.lnk"
   RMDir "$SMPROGRAMS\Rhine Music Preview"

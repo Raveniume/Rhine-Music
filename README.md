@@ -1,79 +1,57 @@
-# Rhine Music · Windows
+# Rhine Music
 
-把音乐放进三维玻璃专辑架，浏览自己的收藏。
+用三维唱片架浏览音乐，听歌时看同步歌词。
 
-这是 [RonaldDeng/Rhine-Music-Demo](https://github.com/RonaldDeng/Rhine-Music-Demo) V0.4.1 的 Windows 社区衍生版，当前由 [Raveniume/Rhine-Music](https://github.com/Raveniume/Rhine-Music) 继续维护；视觉与渲染基础来自 [LBEILC/RhineLabUI](https://github.com/LBEILC/RhineLabUI)。本仓库与上游作者、音乐平台及原作品牌方没有官方合作关系。
+[下载安装](https://github.com/Raveniume/Rhine-Music/releases/latest) · [使用说明](README.windows.md) · [更新记录](CHANGELOG.md) · [反馈问题](https://github.com/Raveniume/Rhine-Music/issues)
 
-**源码与更新：[Raveniume/Rhine-Music](https://github.com/Raveniume/Rhine-Music)** · [使用说明](README.windows.md) · [平台与权利说明](PLATFORM-NOTICE.md) · [隐私说明](PRIVACY.md) · [资源来源](NOTICE.md)
+![唱片架](docs/media/current/archive.png)
 
-## 当前版本
+## 功能
 
-**0.4.14 · 2026-10-28**。这是开发预览版，平台接口、网络、账号权限和显卡驱动会影响实际表现，尚未完成所有电脑的兼容性验收。
+- 浏览本地音乐，或登录网易云、QQ 音乐、波点音乐查看曲库和歌单。
+- 搜索歌曲、管理播放队列，使用顺序、随机或单曲循环。
+- 整理歌单：手动上移、下移，也可按名称或歌曲数量排序；唱片架同步采用这个顺序。
+- 歌曲详情显示同步歌词。网易云优先读取逐字时间轴；没有逐字数据时显示逐行歌词。点击歌词可定位播放进度。
+- Windows 任务栏歌词、托盘播放控制，以及顶部歌词快捷开关。
+- 深浅主题、跟随系统、开场动画、频谱样式、画质和帧率设置。
 
-- 三维玻璃专辑架、浅色／深色主题、封面、歌词、开场动画。
-- 顶部账号入口支持选择网易云、QQ 音乐和波点音乐；搜索与歌单使用当前平台账号。
-- 连续滚动歌单、歌曲详情、歌词滚动与点击定位，搜索结果支持下一首播放和添加到自己的歌单。
-- 临时播放队列独立于原歌单，提供对应模型行、顺序／随机／单曲循环、音量控制。
-- 新增“模型循环”开关，默认开启；关闭后仅按实际数量显示模型，浏览到首尾停止。
-- 音浪开关、位置、样式和颜色设置；歌词区域高度、帧数上限、自定义快捷键、最大化／全屏选项。
-- 模型可见区域裁剪、封面准备 Worker、上传合并与有界缓存，持续改善快速浏览时的资源开销；不承诺固定帧率。
-- 全窗口分类设置，详细报错可选，诊断信息支持本地复制与保存。
+![逐字歌词](docs/media/current/lyrics.png)
 
-### 登录音乐平台，搜索曲库并浏览歌单
+![整理歌单](docs/media/current/playlist-order.png)
 
-在顶部账号入口选择音乐平台并扫码登录。登录后，搜索和“我的歌单”使用当前平台接口。登录不代表获取了平台授权或所有歌曲的完整播放权限，平台风控、地区与会员限制仍然适用。
+截图使用合成曲目和示例歌词，不包含私人歌单或歌曲封面。
 
-![歌单总览](docs/media/windows-preview/playlist-overview.png)
+## 下载和更新
 
-![音乐账号登录界面](docs/media/windows-preview/account-login.png)
+Windows 10 / 11 x64 请下载 Release 中的 `Rhine-Music-Windows-…-x64-Setup.exe`。安装包包含运行环境，无需另装 Node.js 或 Rust。播放器正在运行时，安装器会询问是否关闭后继续；账号、音乐和设置保留。
 
-![网络曲库搜索界面](docs/media/windows-preview/network-search.png)
+软件内更新入口为 **设置 → 关于 → 检查更新**。也可以下载新安装包覆盖安装。GitHub 的 Source code 压缩包是源码，不能直接运行。Windows EXE 尚未签名。
 
-## 下载与安装
+macOS 包及其签名、验收状态以对应 Release 说明为准；维护流程见 [macOS 发布说明](docs/MACOS-RELEASE.md)。
 
-**macOS 提示“已损坏”**：旧 DMG 没有完成签名、公证与实机验收。新版暂停自动发布 Mac 安装包；Mac 维护者请按 [macOS 发布接手规范](docs/MACOS-RELEASE.md) 诊断、签名、公证后重新验收。不要通过关闭系统安全检查解决。
+安装包不含 FFmpeg／ffprobe 和云信原生聊天 SDK，目前不提供“一起听”。需要额外解码时，可自行安装 FFmpeg 并加入 PATH。在线曲库和播放权限由音乐平台及账号决定。
 
+## 数据与反馈
 
-普通用户请下载 **[最新 Windows 安装包](https://github.com/Raveniume/Rhine-Music/releases/latest)**，双击安装，不需要下载 GitHub 自动生成的 Source code 压缩包。
+本地音乐文件和标签只读。登录会话在 Windows 上使用当前用户的 DPAPI 加密。歌单重命名、新建、增删歌曲会提交到当前音乐平台；展示排序不会改动云端歌单。
 
-默认安装到当前用户目录，无需另装 Node.js、npm 或 Rust，可创建开始菜单和桌面快捷方式。安装前退出旧版播放器。已有 WebView2 可离线安装播放器；缺少时，安装器会提示通过 Microsoft 官方引导程序联网安装。安装界面使用 Unicode 简体中文，卸载保留音乐文件、登录状态和设置。EXE 暂未签名。
+问题和权利说明通过 [GitHub Issues](https://github.com/Raveniume/Rhine-Music/issues) 提交，请勿附带 Cookie、令牌或私人曲库数据。详见 [隐私说明](PRIVACY.md) 和 [平台说明](PLATFORM-NOTICE.md)。
 
-公开安装包不捆绑 FFmpeg／ffprobe。需要这些解码工具时请自行安装，通过 PATH 或 FFMPEG_PATH、FFPROBE_PATH 指定。当前公开包也不包含许可尚未核实的云信原生聊天组件，因此暂不提供“一起听”；本地开发体验版的该功能不代表公开包已提供。
+## 开发
 
-本地音乐目录在“设置 → 本地歌单设置”添加；模型循环在“设置 → 画面显示设置 → 模型排列”调整。
-
-## 本次更新
-
-- 2026-10-25：详情转场提前显示并降低移动期间 AO／景深负载；Windows 任务栏歌词完成 ready 握手、状态缓存、自动避让和停止隐藏；新增原生 WebView2 性能报告与合成任务栏回归。
-
-- 修复大型网易云歌单因响应大小限制无法读取的问题，减少不需要的内嵌曲目详情。
-- 已知歌曲资料未就绪时保留模型外壳，修正播放列表加入后的循环列映射和空白缝隙。
-- 加入模型循环开关和对应浏览边界，改善队列、音量、单曲循环图标与歌曲选择栏。
-- 汇总近期播放队列、歌单整理、歌词、音浪、快捷键和启动体验更新。
-- 软件分发入口改为中文安装 EXE，旧版 Release 保留供回退。
-
-完整范围和验证边界见 [更新说明](docs/RELEASE-0.2.0-PREVIEW.md)。
-
-## 隐私与反馈
-
-音乐文件与标签只读；用户数据保存在 %LOCALAPPDATA%\local.rhine.music.windows\music-data。登录会话由当前 Windows 用户的 DPAPI 分平台加密，不包含在下载包中。歌曲加入、移除或歌单编辑会按用户操作同步到对应平台，详情见 [隐私说明](PRIVACY.md)。
-
-问题与权利说明请通过 GitHub 仓库的 Issues 提交。不要公开 Cookie、令牌、私人歌单导出或原始网络抓包。
-
-如涉及版权、商标、账号接入或平台协议，请联系并提供具体文件／功能、权利依据及必要说明，维护者会核实并视情况停止适配、删除相关内容或下架受影响版本。**免责声明不构成平台授权，也不免除依法应承担的责任。**
-
-## 从源码构建
-
-需要 Node.js ≥ 22.12.0；Windows 原生宿主另需 Rust、Visual Studio C++ 构建工具和 Windows SDK。
+需要 Node.js ≥ 22.12.0。Windows 桌面构建还需要 Rust、Visual Studio C++ 构建工具和 Windows SDK。
 
 ```powershell
-npm ci --ignore-scripts
+npm ci
 npm run build
+$env:VITE_PUBLIC_RELEASE = '1'
 npm run desktop:build
 ```
 
-公开版前端构建设置 VITE_PUBLIC_RELEASE=1，禁用未分发组件的入口；安装打包流程见 [安装包说明](docs/WINDOWS-INSTALLER.md)。源码未附带 node-nim；本地一起听研究代码保留，公开安装包不会加载该 SDK。
+[安装器构建](docs/WINDOWS-INSTALLER.md) · [验证记录](docs/WINDOWS-VALIDATION.md)
 
-## 许可与致谢
+## 来源与许可
 
-当前组合工程按 [AGPL-3.0-only](LICENSE-AGPL-3.0-only) 发布；其中上游有权授权的代码、脚本和技术文档继续保留 [MIT License](LICENSE) 及 LBEILC、RonaldDeng 等原作者署名。模型、图片、字体、标志、声音与音乐内容按各自权利边界使用，不能一概视为 MIT 或已获商业授权。原说明保留在 [README.upstream.md](README.upstream.md) 和 [README.original.md](README.original.md)。
+本项目基于 [RonaldDeng/Rhine-Music-Demo](https://github.com/RonaldDeng/Rhine-Music-Demo) V0.4.1，由 [Raveniume](https://github.com/Raveniume/Rhine-Music) 维护；视觉与渲染基础来自 [LBEILC/RhineLabUI](https://github.com/LBEILC/RhineLabUI)，逐字歌词使用 [AMLL](https://github.com/amll-dev/applemusic-like-lyrics)。本项目与音乐平台及原作品牌方没有官方合作关系。
+
+组合工程采用 [AGPL-3.0-only](LICENSE-AGPL-3.0-only)。上游以 MIT 授权的部分保留 [MIT License](LICENSE) 及原作者署名。图片、字体、声音、模型、品牌和音乐内容适用各自许可，详见 [NOTICE](NOTICE.md) 与 [第三方声明](docs/third-party-notices.md)。[原项目说明](README.upstream.md) 保留供查阅。

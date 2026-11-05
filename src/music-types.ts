@@ -46,6 +46,8 @@ export interface OnlineSongInfo {
     translated: string;
     qrc?: string;
     yrc?: string;
+    ytranslated?: string;
+    ttml?: string;
     romanized?: string;
     yromanized?: string;
     instrumental: boolean;

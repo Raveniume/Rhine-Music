@@ -1574,7 +1574,7 @@ function trackList(a: MusicAlbum, discs: number) {
 function albumAbout(a: MusicAlbum) {
   if (a.playback) return `<section class="album-about"><small>${a.tracks[0]?.onlineSource ? musicPlatforms[a.tracks[0].onlineSource.provider] : 'LOCAL MUSIC'}</small><h3>${esc(a.title)}</h3><p>当前卡片对应歌曲：${esc(a.playback.songTitle)}</p>${a.description ? `<p>${esc(a.description)}</p>` : ''}</section>`;
   return `<section class="album-about"><small>ABOUT THIS ALBUM</small>
-    ${a.description ? `<p>${esc(a.description)}</p>${a.descriptionSource ? `<a class="text-button" href="${esc(a.descriptionSource.url)}" target="_blank" rel="noopener">来源：${esc(a.descriptionSource.name)} ↗</a>${a.descriptionSource.license ? `<small class="introduction-license">${esc(a.descriptionSource.license)}</small>` : ""}` : ""}` : `<h3>专辑介绍待补充</h3><p>从公开百科核对专辑与歌手后读取介绍，附上来源并保存在本机。无法确认对应专辑时保留空白。</p>`}
+    ${a.description ? `<p>${esc(a.description)}</p>${a.descriptionSource ? `<a class="text-button" href="${esc(a.descriptionSource.url)}" target="_blank" rel="noopener">来源：${esc(a.descriptionSource.name)} ↗</a>${a.descriptionSource.license ? `<small class="introduction-license">${esc(a.descriptionSource.license)}</small>` : ""}` : ""}` : `<h3>专辑介绍待补充</h3><p>从公开百科核对专辑与歌手后读取介绍，附上来源。无法确认对应专辑时保留空白。</p>`}
     ${!demo ? `<button data-action="introduction-album" class="text-button" ${introductionsStarting || library.introductions?.running ? "disabled" : ""}>${a.description ? "更新" : "查询"}专辑介绍 ↗</button><p class="introduction-feedback" data-introduction-feedback="${esc(a.id)}" role="status">${esc(introductionAlbumStatus(a))}</p>` : ""}
     <div class="source-note"><span>本地目录</span><code>${esc(a.folder)}</code></div><div class="genre-tags">${a.rawGenres.map((g) => `<span>${esc(g)}</span>`).join("")}</div></section>${producerBlock(a)}`;
 }
@@ -1588,7 +1588,7 @@ function introductionAlbumStatus(a: MusicAlbum) {
     return a.description
       ? "本次未找到可靠更新，已保留原有介绍。"
       : "未找到可核实的专辑介绍，可以稍后重试。";
-  if (a.description) return "介绍已保存在本机，可离线阅读。";
+  if (a.description) return "介绍可离线查看。";
   return "尚未查询专辑介绍。";
 }
 function updateIntroductionStatus() {
@@ -1748,7 +1748,7 @@ function creditsAlbumStatus(album: MusicAlbum) {
   if (lookup?.status === "partial")
     return `已取得 ${lookup.matchedTracks || 0} / ${lookup.totalTracks || album.tracks.length} 首曲目的参与人员，尚未覆盖整张专辑。${lookup.error ? ` ${lookup.error}` : ""}${cooldown}`;
   if (lookup?.status === "matched")
-    return `制作信息已保存在本机，可离线阅读。${lookup.totalTracks ? ` 已核对 ${lookup.matchedTracks || 0} / ${lookup.totalTracks} 首曲目。` : ""}${cooldown}`;
+    return `制作信息可离线查看。${lookup.totalTracks ? ` 已核对 ${lookup.matchedTracks || 0} / ${lookup.totalTracks} 首曲目。` : ""}${cooldown}`;
   if (lookup?.status === "uncertain")
     return `尚无法可靠确认对应曲目，未采用存疑的参与人员。${kept}${cooldown}`;
   if (lookup?.status === "not-found")
@@ -2065,7 +2065,7 @@ function onlineAccountChanged(provider: MusicProvider, account: NeteaseAccount) 
   if (overview) setOverview(false, false);
   songView.invalidate();
   onlinePlaybackHistory.length = 0;
-  playlistLibrary.setProvider(provider); onlineSearch.setLogin(platformLogins[provider]);
+  playlistLibrary.setProvider(provider); playlistLibrary.orderScope = nextKey; onlineSearch.setLogin(platformLogins[provider]);
   // An account change invalidates its search queue as well as private playlist pages.
   onlineSearch.clear();
   followedPlaylistTrack = undefined; playlistPlaybackId = undefined; playbackVisualKey = ''; queueView = false; queueActivated = false; searchShelfActive = false; queueSource = undefined; queueReturn = undefined; searchShelves.clear(); searchShelf = undefined; searchReturn = undefined; player.clearQueue();
@@ -2133,7 +2133,16 @@ const playlistManager = new PlaylistManager(stage, async () => {
   const row = Math.max(0, playlistLibrary.playlists.findIndex(item => item.id === cell?.playlistId));
   await playlistLibrary.window(row, cell?.songIndex || 0);
   if (key === accountKey && accountView) await rebuildPlaylistGrid();
-}, notify);
+}, notify, { scope: () => accountKey, changed: async () => {
+  if (!accountActive) return;
+  const detailId = playlistDetail && playlistLibrary.playlists[playlistDetail.row]?.id;
+  playlistSelectionEpoch++; playlistPlayEpoch++; overviewListEpoch++;
+  playlistNavigationTarget = undefined;
+  overviewUI.collapse();
+  playlistLibrary.applyOrder();
+  if (playlistDetail && detailId) playlistDetail.row = Math.max(0, playlistLibrary.playlists.findIndex(item => item.id === detailId));
+  if (accountView) await rebuildPlaylistGrid();
+} });
 let playbackVisualKey = '';
 let playbackVisualTask = Promise.resolve();
 let playbackVisualGeneration = 0;

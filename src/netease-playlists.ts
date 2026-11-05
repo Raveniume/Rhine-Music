@@ -4,6 +4,7 @@ import { MUSIC_LOOP_ROWS, wrap } from './archive-loop.ts';
 import { musicPlatforms, type MusicProvider } from './music-platform.ts';
 import { fetchOnline } from './online-debug.ts';
 import { neteaseProvider } from './platform-provider.ts';
+import { orderedPlaylists, readPlaylistOrder } from './playlist-order.ts';
 export class NeteasePlaylists {
   playlists: NeteasePlaylist[] = [];
   loading = false;
@@ -23,6 +24,13 @@ export class NeteasePlaylists {
   private titlePrefetchKey = '';
   private changed: () => void;
   provider: MusicProvider = 'netease';
+  orderScope = '';
+  private sourceOrder: NeteasePlaylist[] = [];
+  applyOrder() {
+    this.windowEpoch++; this.titlePrefetchEpoch++; this.titlePrefetchKey = '';
+    this.playlists = orderedPlaylists(this.sourceOrder, readPlaylistOrder(this.orderScope));
+    this.revision++; this.changed();
+  }
   constructor(changed: () => void) { this.changed = changed; }
   setProvider(provider: MusicProvider) { if (provider !== this.provider) { this.dispose(); this.provider = provider; } }
   private async request<T>(url: string): Promise<T> {
@@ -40,7 +48,7 @@ export class NeteasePlaylists {
   dispose() {
     this.generation++; this.windowEpoch++; this.titlePrefetchEpoch++; this.titlePrefetchKey = ''; this.controller.abort(); this.controller = new AbortController();
     // Queued jobs still run their cancellation checks and settle callers.
-    this.pages.clear(); this.pending.clear(); this.playlists = []; this.loading = false; this.error = ''; this.revision++;
+    this.pages.clear(); this.pending.clear(); this.playlists = []; this.sourceOrder = []; this.loading = false; this.error = ''; this.revision++;
     this.albumsRevision = -1; this.albumsView = []; this.albumCache.clear();
   }
   async load() {
@@ -55,7 +63,8 @@ export class NeteasePlaylists {
         if (!page.hasMore) break;
         if (offset === 5000) this.error = '当前显示前 5100 个歌单。';
       }
-      this.playlists = [...new Map(playlists.map(item => [item.id, item])).values()]; this.revision++;
+      this.sourceOrder = [...new Map(playlists.map(item => [item.id, item])).values()];
+      this.playlists = orderedPlaylists(this.sourceOrder, readPlaylistOrder(this.orderScope)); this.revision++;
       this.changed();
       if (this.playlists.length) await this.ensure(0, 0);
     } catch (failure) { if (generation === this.generation && !this.controller.signal.aborted) this.error = (failure as Error).message; }
@@ -184,16 +193,20 @@ export class NeteasePlaylists {
     const generation = this.generation;
     const queue = await this.queue(row, target);
     if (generation !== this.generation) throw new DOMException('歌单已改变', 'AbortError');
-    const track = this.track(row, target);
+    const currentRow = this.playlists.findIndex(item => item.id === playlist.id);
+    const track = this.track(currentRow, target);
     if (!track) throw new Error('暂时无法读取这首歌曲，请稍后重试。');
     return { id: track.id, queue, position: target };
   }
 
   async queue(row: number, song: number) {
     const playlist = this.playlists[row]; if (!playlist) return [];
+    const generation = this.generation;
     const offset = Math.floor(song / 50) * 50;
     await Promise.all([Math.max(0, offset - 50), offset, offset + 50].filter((value, index, all) => value < playlist.trackCount && all.indexOf(value) === index).map(index => this.ensure(row, index)));
-    return Array.from({ length: Math.min(playlist.trackCount, offset + 100) - Math.max(0, offset - 50) }, (_, index) => this.track(row, Math.max(0, offset - 50) + index)).filter((track): track is MusicTrack => !!track);
+    if (generation !== this.generation) throw new DOMException('歌单已改变', 'AbortError');
+    const currentRow = this.playlists.findIndex(item => item.id === playlist.id);
+    return Array.from({ length: Math.min(playlist.trackCount, offset + 100) - Math.max(0, offset - 50) }, (_, index) => this.track(currentRow, Math.max(0, offset - 50) + index)).filter((track): track is MusicTrack => !!track);
   }
   albums(): MusicAlbum[] {
     if (this.albumsRevision === this.revision) return this.albumsView;

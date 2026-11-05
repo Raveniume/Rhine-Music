@@ -4,6 +4,7 @@ import type { MusicTrack, NeteasePlaylist } from './music-types';
 import { escapeHtml as esc } from './html';
 import { fetchOnline } from './online-debug';
 import './playlist-manager.css';
+import { orderedPlaylists, readPlaylistOrder, savePlaylistOrder } from './playlist-order';
 
 type Action = 'create' | 'rename' | 'delete' | 'add' | 'remove';
 type Capabilities = Record<Action, boolean> & { session: string; notice?: string };
@@ -24,7 +25,11 @@ export class PlaylistManager {
   private pages = new Map<number, Page>();
   private pending = new Set<number>();
   private opener?: HTMLElement;
-  constructor(private root: HTMLElement, private changed: () => Promise<void>, private notify: (message: string) => void) {}
+  private filter = '';
+  private createDraft = '';
+  private orderScope = '';
+  constructor(private root: HTMLElement, private changed: () => Promise<void>, private notify: (message: string) => void,
+    private ordering?: { scope: () => string; changed: () => Promise<void> }) {}
   dispose() {
     this.epoch++; this.controller.abort(); this.controller = new AbortController();
     this.dialog?.close(); this.dialog?.remove(); this.dialog = undefined;
@@ -44,6 +49,7 @@ export class PlaylistManager {
   }
   async open(provider: MusicProvider, options: { track?: MusicTrack; playlistId?: string } = {}) {
     this.dispose(); this.provider = provider; this.adding = options.track;
+    this.filter = ''; this.createDraft = ''; this.orderScope = this.ordering?.scope() || '';
     if (options.track && options.track.onlineSource?.provider !== provider) return;
     this.opener = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
     const epoch = this.epoch;
@@ -57,6 +63,7 @@ export class PlaylistManager {
       const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button');
       if (!button || this.busy) return;
       if (button.hasAttribute('data-close')) this.dispose();
+      if (button.dataset.move) void this.move(button.dataset.move, Number(button.dataset.direction));
       if (button.dataset.choose) {
         const playlist = this.playlists.find(item => item.id === button.dataset.choose); if (!playlist) return;
         if (this.adding) void this.write('add', { playlistId: playlist.id, trackIds: [this.adding.onlineSource!.id] });
@@ -73,6 +80,14 @@ export class PlaylistManager {
       const action = form.dataset.form as Action;
       const name = new FormData(form).get('name');
       if (action === 'create' || action === 'rename') void this.write(action, { name, playlistId: this.selected?.id });
+    });
+    dialog.addEventListener('change', event => {
+      const select = event.target as HTMLSelectElement;
+      if (!select.matches('[data-order]') || this.busy) return;
+      const list = this.ordered();
+      if (select.value === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN', { numeric: true }));
+      if (select.value === 'count') list.sort((a, b) => b.trackCount - a.trackCount);
+      if (select.value) void this.setOrder(select.value === 'default' ? [] : list.map(item => item.id));
     });
     try {
       const caps = await this.request<Capabilities>('playlist-management');
@@ -94,17 +109,46 @@ export class PlaylistManager {
     this.playlists = [...new Map(list.map(item => [item.id, item])).values()];
   }
   private status(message: string) { const node = this.dialog?.querySelector('.playlist-manager-status'); if (node) node.textContent = message; }
+  private ordered() { return orderedPlaylists(this.playlists, readPlaylistOrder(this.orderScope)); }
+  private async move(id: string, direction: number) {
+    const list = this.ordered(), index = list.findIndex(item => item.id === id), target = index + direction;
+    if (index < 0 || target < 0 || target >= list.length) return;
+    [list[index], list[target]] = [list[target], list[index]];
+    await this.setOrder(list.map(item => item.id), id, direction);
+  }
+  private async setOrder(ids: string[], focusId?: string, direction?: number) {
+    if (!this.ordering || this.busy) return;
+    const epoch = this.epoch, scrollTop = this.dialog?.querySelector('.playlist-manager-choices')?.scrollTop || 0;
+    try {
+      savePlaylistOrder(this.orderScope, ids);
+      this.busy = true;
+      this.render();
+      const scroll = this.dialog?.querySelector('.playlist-manager-choices'); if (scroll) scroll.scrollTop = scrollTop;
+      await this.ordering.changed();
+      if (epoch !== this.epoch) return;
+      this.busy = false; this.render();
+      const list = this.dialog?.querySelector('.playlist-manager-choices'); if (list) list.scrollTop = scrollTop;
+      const buttons = [...(this.dialog?.querySelectorAll<HTMLButtonElement>('[data-move]') || [])];
+      const focus = buttons.find(button => button.dataset.move === focusId && Number(button.dataset.direction) === direction && !button.disabled)
+        || buttons.find(button => button.dataset.move === focusId && !button.disabled);
+      (focus || this.dialog?.querySelector<HTMLSelectElement>('[data-order]'))?.focus({ preventScroll: true });
+      this.status(ids.length ? '歌单顺序已更新。' : '已恢复平台默认顺序。');
+    } catch (error) { if (epoch === this.epoch) { this.busy = false; this.render(); this.status(`未能完成排序：${(error as Error).message}`); } }
+  }
   private render() {
     const body = this.dialog?.querySelector<HTMLElement>('.playlist-manager-body'); if (!body || !this.caps) return;
     const playlist = this.selected;
     if (!playlist) {
-      const own = this.playlists.filter(item => item.owned);
+      const ordered = this.ordered(), own = ordered.filter(item => item.owned);
+      const canOrder = !!this.ordering && !!this.orderScope && !this.adding;
       this.status(this.caps.notice || (this.adding ? `将「${this.adding.title}」添加到${musicPlatforms[this.provider]}歌单` : '自己的歌单可编辑，收藏的歌单只读。'));
-      body.innerHTML = `${this.caps.create ? `<form data-form="create" class="playlist-name-form"><input name="name" aria-label="新歌单名称" placeholder="新建歌单" maxlength="${this.provider === 'qq' ? 20 : 40}" required><button type="submit">＋ 新建</button></form>` : ''}<input type="search" class="playlist-filter" aria-label="筛选歌单" placeholder="查找歌单"><div class="playlist-manager-choices">${(this.adding ? own : this.playlists).map(item => `<button type="button" class="playlist-choice" data-choose="${esc(item.id)}" data-name="${esc(item.name.toLocaleLowerCase())}" ${this.adding && !this.caps!.add ? 'disabled' : ''}><span class="playlist-choice-cover">${item.coverUrl ? `<img src="${esc(item.coverUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '♪'}</span><span><strong>${esc(item.name)}</strong><small>${item.trackCount} 首 · ${item.owned ? '我创建的' : '我收藏的'}</small></span><span aria-hidden="true">${this.adding ? '＋' : '›'}</span></button>`).join('') || '<p>暂无可选择的歌单。</p>'}</div>`;
-      body.querySelector('input[type="search"]')?.addEventListener('input', event => {
-        const query = (event.target as HTMLInputElement).value.trim().toLocaleLowerCase();
-        body.querySelectorAll<HTMLElement>('[data-choose]').forEach(item => { item.hidden = !item.dataset.name?.includes(query); });
-      });
+      body.innerHTML = `${this.caps.create ? `<form data-form="create" class="playlist-name-form"><input name="name" aria-label="新歌单名称" placeholder="新建歌单" maxlength="${this.provider === 'qq' ? 20 : 40}" required><button type="submit">＋ 新建</button></form>` : ''}<input type="search" class="playlist-filter" aria-label="筛选歌单" placeholder="查找歌单"><div class="playlist-order-tools">${canOrder ? `<span>歌单顺序</span><select data-order aria-label="歌单排序" ${this.busy ? 'disabled' : ''}><option value="">排序方式…</option><option value="name">按名称</option><option value="count">按歌曲数量</option><option value="default">恢复平台默认顺序</option></select>` : ''}</div><div class="playlist-manager-choices">${(this.adding ? own : ordered).map((item, index) => `<div class="playlist-choice-row" data-name="${esc(item.name.toLocaleLowerCase())}"><button type="button" class="playlist-choice" data-choose="${esc(item.id)}" data-name="${esc(item.name.toLocaleLowerCase())}" ${this.busy || this.adding && !this.caps!.add ? 'disabled' : ''}><span class="playlist-choice-cover">${item.coverUrl ? `<img src="${esc(item.coverUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '♪'}</span><span><strong>${esc(item.name)}</strong><small>${item.trackCount} 首 · ${item.owned ? '我创建的' : '我收藏的'}</small></span><span aria-hidden="true">${this.adding ? '＋' : '›'}</span></button>${canOrder ? `<div class="playlist-order-move"><button data-move="${esc(item.id)}" data-direction="-1" aria-label="上移 ${esc(item.name)}" title="上移" ${this.busy || index === 0 ? 'disabled' : ''}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 6-6 6 6"/></svg></button><button data-move="${esc(item.id)}" data-direction="1" aria-label="下移 ${esc(item.name)}" title="下移" ${this.busy || index === ordered.length - 1 ? 'disabled' : ''}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 10 6 6 6-6"/></svg></button></div>` : ''}</div>`).join('') || '<p>暂无可选择的歌单。</p>'}</div>`;
+      const search = body.querySelector<HTMLInputElement>('input[type="search"]')!;
+      const createName = body.querySelector<HTMLInputElement>('[data-form="create"] input');
+      if (createName) { createName.value = this.createDraft; createName.addEventListener('input', () => this.createDraft = createName.value); }
+      const filter = () => body.querySelectorAll<HTMLElement>('.playlist-choice-row').forEach(item => { item.hidden = !item.dataset.name?.includes(this.filter.trim().toLocaleLowerCase()); });
+      search.value = this.filter; filter();
+      search.addEventListener('input', () => { this.filter = search.value; filter(); });
       return;
     }
     const editable = playlist.owned;
@@ -169,6 +213,7 @@ export class PlaylistManager {
       const result = await this.request<{ message: string }>('playlist-management', { ...values, action, session: this.caps.session });
       if (epoch !== this.epoch) return;
       saved = true; this.notify(result.message);
+      if (action === 'create') this.createDraft = '';
       await this.changed();
       if (epoch !== this.epoch) return;
       await this.loadPlaylists();
@@ -183,6 +228,9 @@ export class PlaylistManager {
       if (epoch === this.epoch) {
         this.busy = false; this.dialog?.removeAttribute('aria-busy');
         this.dialog?.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input,button').forEach(node => node.disabled = false);
+        const rows = this.dialog?.querySelectorAll('.playlist-choice-row');
+        rows?.[0]?.querySelector<HTMLButtonElement>('[data-direction="-1"]')?.setAttribute('disabled', '');
+        rows?.[rows.length - 1]?.querySelector<HTMLButtonElement>('[data-direction="1"]')?.setAttribute('disabled', '');
         const remove = this.dialog?.querySelector<HTMLButtonElement>('[data-remove]'); if (remove) remove.disabled = !this.picked.size;
         this.paintTracks();
       }

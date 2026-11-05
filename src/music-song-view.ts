@@ -7,7 +7,7 @@ import { escapeHtml as esc } from './html';
 import { parseLyrics, parseLyricDocument, lyricDocumentToLegacyLines, lyricIndex, untimedLyrics, type LyricDocument, type LyricLine } from './music-lyrics';
 import { SongTextReveal } from './song-text-reveal';
 import { MusicLyricScroll } from './music-lyric-scroll';
-import { AmlLyricSurface } from './amll-lyrics';
+import type { AmlLyricSurface } from './amll-lyrics';
 
 const clock = (value: number) => {
   const seconds = Math.floor(Number.isFinite(value) ? Math.max(0, value) : 0);
@@ -46,6 +46,8 @@ export class MusicSongView {
   private lyricScroll?: MusicLyricScroll;
   private amll?: AmlLyricSurface;
   private amllNode?: HTMLElement;
+  private amllClass?: typeof AmlLyricSurface;
+  private amllLoading = false;
   private desktopLyricKey = '';
   private visible = false;
   private miniVisible = false;
@@ -56,6 +58,7 @@ export class MusicSongView {
   private lastReduced = false;
   private tab: "info" | "lyrics" | "together" = "lyrics";
   private viewEvents?: AbortController;
+  private tabsResize?: ResizeObserver;
 
   private readonly onDesktopVisibility = (event: Event) => {
     this.desktopHidden = !!(event as CustomEvent<{ hidden?: boolean }>).detail?.hidden;
@@ -96,6 +99,9 @@ export class MusicSongView {
     this.reveal.reset();
     this.viewEvents?.abort(); this.viewEvents = new AbortController(); if (this.tab !== "together") this.tab = "lyrics";
     const tabs = document.querySelector<HTMLElement>("#song-view .song-view-tabs");
+    this.tabsResize?.disconnect();
+    this.tabsResize = new ResizeObserver(() => this.syncTabIndicator(false));
+    if (tabs) this.tabsResize.observe(tabs);
     tabs?.addEventListener("click", event => {
       const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-song-view-tab]");
       if (!button) return; event.stopPropagation(); this.selectTab(button.dataset.songViewTab as "info" | "lyrics" | "together");
@@ -129,7 +135,7 @@ export class MusicSongView {
     if (visible === this.visible) return;
     if (visible && !this.visible) this.lyricKey = '';
     this.visible = visible;
-    this.amll?.setVisible(visible && this.detailActive && this.tab === "lyrics");
+    this.amll?.setVisible(visible && !this.desktopHidden && this.detailActive && this.tab === "lyrics");
     if (!visible) { this.lyricScroll?.stop(); this.onTab?.("hidden"); }
     this.reveal.setVisible(visible);
   }
@@ -176,7 +182,7 @@ export class MusicSongView {
         const selected = tab.dataset.songViewTab === this.tab;
         tab.setAttribute('aria-selected', String(selected)); tab.tabIndex = selected ? 0 : -1;
       }
-      this.syncTabIndicator(viewChanged && wasDetailActive);
+      if (viewChanged || revealChanged || enteringDetail) this.syncTabIndicator(viewChanged && wasDetailActive);
       if (!showLyrics || !detailActive) this.lyricScroll?.stop();
       this.amll?.setVisible(this.visible && !this.desktopHidden && detailActive && showLyrics);
       this.amll?.setReducedMotion(this.reduced());
@@ -285,10 +291,20 @@ export class MusicSongView {
     const document = cached?.document;
     this.emitDesktopLyric(track, cached, time);
     const useAmll = !!document && document.lines.length > 0 && (document.sourceFormat !== 'lrc' || document.hasWordTiming);
-    if (useAmll && document) {
+    if (useAmll && !this.amllClass && !this.amllLoading) {
+      this.amllLoading = true;
+      void import('./amll-lyrics').then(module => {
+        if (this.disposed) return;
+        this.amllClass = module.AmlLyricSurface;
+        if (this.state) this.update(this.state, this.detailActive);
+      }).catch(() => { /* Keep the readable line view if the optional chunk fails. */ });
+    }
+    if (useAmll && document && this.amllClass) {
       if (this.amllNode !== node) {
+        this.lyricScroll?.dispose(); this.lyricScroll = undefined;
+        this.lyricEvents?.abort(); this.lyricNode = undefined;
         this.amll?.dispose();
-        this.amll = new AmlLyricSurface(node, seconds => {
+        this.amll = new this.amllClass(node, seconds => {
           const state = this.state;
           if (!state || state.currentTrack?.id !== track.id || state.loading || !(state.duration > 0)) return;
           this.manualLyricsUntil = 0;
@@ -297,14 +313,18 @@ export class MusicSongView {
         this.amllNode = node;
       }
       node.dataset.engine = 'amll';
+      node.classList.remove('lyrics-untimed');
+      node.dataset.content = `${track.id}:${cached?.lyricAt || 0}`;
       this.lyricScroll?.stop();
       const amll = this.amll;
       if (!amll) return;
       amll.setDocument(document, `${track.id}:${cached?.lyricAt || 0}`, time);
+      amll.setReducedMotion(this.reduced());
       amll.setTime(time, this.state?.currentTrack?.id === track.id && !!this.state.playing, false);
+      amll.setVisible(this.visible && !this.desktopHidden && this.detailActive && this.tab === 'lyrics');
       return;
     }
-    if (this.amll) { this.amll.dispose(); this.amll = undefined; this.amllNode = undefined; }
+    if (this.amll) { this.amll.dispose(); this.amll = undefined; this.amllNode = undefined; delete node.dataset.content; }
     delete node.dataset.engine;
     if (this.lyricNode !== node) {
       this.lyricScroll?.dispose();
@@ -378,7 +398,7 @@ export class MusicSongView {
         if (epoch !== this.epoch || controller.signal.aborted || this.disposed) return;
         const previous = this.cache.get(id), lyrics = info.lyrics, prior = previous?.info?.lyrics;
         const sameLyrics = prior && prior.original === lyrics.original && prior.translated === lyrics.translated &&
-          prior.qrc === lyrics.qrc && prior.yrc === lyrics.yrc && prior.romanized === lyrics.romanized &&
+          prior.qrc === lyrics.qrc && prior.yrc === lyrics.yrc && prior.ttml === lyrics.ttml && prior.ytranslated === lyrics.ytranslated && prior.romanized === lyrics.romanized &&
           prior.yromanized === lyrics.yromanized && prior.instrumental === lyrics.instrumental && prior.error === lyrics.error;
         const now = Date.now();
         // A metadata TTL refresh must not rebuild the same lyric document or
@@ -433,6 +453,7 @@ export class MusicSongView {
   }
 
   invalidate() {
+    this.tabsResize?.disconnect(); this.tabsResize = undefined;
     this.viewEvents?.abort(); this.viewEvents = undefined;
     this.reveal.reset();
     this.lyricScroll?.dispose(); this.lyricScroll = undefined;

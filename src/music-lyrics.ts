@@ -27,6 +27,7 @@ type LyricPayload = {
   translated?: string;
   qrc?: string;
   yrc?: string;
+  ytranslated?: string;
   ttml?: string;
   romanized?: string;
   yromanized?: string;
@@ -179,19 +180,17 @@ const auxiliaryByStart = (lines: AmllLyricLine[]) => new Map(
 
 /** Convert NetEase lyric payloads into the AMLL line/word model. */
 export function parseLyricDocument(payload: LyricPayload = {}): LyricDocument {
-  const source = payload.yrc?.trim() || payload.qrc?.trim() || payload.ttml?.trim() || payload.original?.trim() || "";
-  const sourceFormat: LyricSourceFormat = payload.yrc?.trim()
-    ? "yrc"
-    : payload.qrc?.trim()
-      ? "qrc"
-      : payload.ttml?.trim()
-        ? "ttml"
-        : payload.original?.trim()
-          ? "lrc"
-          : "plain";
   const offsetMs = finite(payload.offset) * 1000;
-  let lines = normalizeLines(parseSource(source, sourceFormat), offsetMs);
-  const translated = auxiliaryByStart(normalizeLines(parseAuxiliary(payload.translated || ""), offsetMs));
+  const candidates = [["yrc", payload.yrc], ["qrc", payload.qrc], ["ttml", payload.ttml], ["lrc", payload.original]] as const;
+  let source = "", sourceFormat: LyricSourceFormat = "plain", lines: AmllLyricLine[] = [];
+  for (const [format, value] of candidates) {
+    if (!value?.trim()) continue;
+    if (!source) { source = value; sourceFormat = format; }
+    const parsed = normalizeLines(parseSource(value.slice(0, 200000), format).slice(0, 4000), offsetMs);
+    if (parsed.length) { source = value; sourceFormat = format; lines = parsed; break; }
+  }
+  const translatedText = sourceFormat === 'yrc' && payload.ytranslated?.trim() ? payload.ytranslated : payload.translated || "";
+  const translated = auxiliaryByStart(normalizeLines(parseAuxiliary(translatedText), offsetMs));
   const romanized = auxiliaryByStart(normalizeLines(parseAuxiliary(payload.yromanized || payload.romanized || ""), offsetMs));
   if (lines.length) {
     lines = lines.map((line, index) => {

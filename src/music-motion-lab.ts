@@ -34,7 +34,7 @@ export function setupMotionLab(host: HTMLElement, options: MotionLabOptions) {
       </div>
       <div class="motion-lab-scale"><span>慢 · 0.25×</span><span>快 · 3×</span></div>
 
-      <p class="motion-lab-status" role="status">实时生效 · 自动保存在本机</p>
+      <p class="motion-lab-status" role="status">实时生效</p>
       <div class="lighting-lab-actions"><button class="motion-lab-reset" type="button">恢复 1×</button></div>
     </div>`;
   host.append(panel);

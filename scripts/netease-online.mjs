@@ -87,7 +87,8 @@ export async function sdkCall(method, params, signal) {
     togetherCommand: require('NeteaseCloudMusicApi/module/listentogether_play_command.js'),
     songDetail: require('NeteaseCloudMusicApi/module/song_detail.js'),
     album: require('NeteaseCloudMusicApi/module/album.js'),
-    lyric: require('NeteaseCloudMusicApi/module/lyric.js'),
+    lyric: require('NeteaseCloudMusicApi/module/lyric_new.js'),
+    lyricLegacy: require('NeteaseCloudMusicApi/module/lyric.js'),
     crypto: require('NeteaseCloudMusicApi/util/crypto.js') };
   const cookie = params.cookie || {};
   return sdk[method]({ ...params, cookie }, async (uri, data, options) => {
@@ -220,7 +221,10 @@ export class NeteaseOnline {
       if (!track) throw error('网易云没有返回这首歌的资料。', 404);
       const [albumResult, lyricResult] = await Promise.allSettled([
         track.onlineSource.albumId ? this.request('album', { id: track.onlineSource.albumId }) : Promise.resolve({}),
-        this.request('lyric', { id }),
+        this.request('lyric', { id }).catch(() => {
+          if (epoch !== this.auth.epoch) throw error('登录状态已改变。', 409);
+          return this.request('lyricLegacy', { id });
+        }),
       ]);
       if (epoch !== this.auth.epoch) throw error('登录状态已改变。', 409);
       const album = albumResult.status === 'fulfilled' ? albumResult.value.album || {} : {};
@@ -234,7 +238,8 @@ export class NeteaseOnline {
         company: clean(album.company), description: typeof album.description === 'string' ? album.description.slice(0, 12000).replace(/\0/g, '') : undefined,
       }, lyrics: { original: lyricText(lyric.lrc?.lyric), translated: lyricText(lyric.tlyric?.lyric),
         qrc: lyricText(lyric.qrc?.lyric), yrc: lyricText(lyric.yrc?.lyric),
-        romanized: lyricText(lyric.romalrc?.lyric || lyric.romalrc?.lyric),
+        ytranslated: lyricText(lyric.ytlrc?.lyric),
+        romanized: lyricText(lyric.romalrc?.lyric),
         yromanized: lyricText(lyric.yromalrc?.lyric),
         instrumental: lyric.nolyric === true, unavailable: lyric.uncollected === true,
         error: lyricResult.status === 'rejected' ? lyricResult.reason.message : undefined },

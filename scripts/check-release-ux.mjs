@@ -53,6 +53,10 @@ await page.addInitScript(()=>{localStorage.setItem('rhine-music-preferences',JSO
 const silence=Buffer.alloc(44+8000*2*180);silence.write('RIFF');silence.writeUInt32LE(silence.length-8,4);silence.write('WAVEfmt ',8);silence.writeUInt32LE(16,16);silence.writeUInt16LE(1,20);silence.writeUInt16LE(1,22);silence.writeUInt32LE(8000,24);silence.writeUInt32LE(16000,28);silence.writeUInt16LE(2,32);silence.writeUInt16LE(16,34);silence.write('data',36);silence.writeUInt32LE(silence.length-44,40);
 const tracks = Array.from({length:120},(_,i)=>({id:`netease-${1000+i}`,title:`合成曲目 ${String(i+1).padStart(3,'0')}`,artist:'测试歌手 / 合作歌手',albumId:`album-${i}`,duration:180,format:'在线音频',browserPlayable:true,onlineSource:{provider:'netease',id:String(1000+i),albumTitle:'合成专辑'}}));
 const fixtureLyrics = Array.from({length:20},(_,i)=>`[00:${String(i*3).padStart(2,'0')}.00]合成歌词第 ${i+1} 行 · 用于检查底部渐隐`).join('\n');
+const wordLyrics = Array.from({length:20},(_,i)=>{
+  const text=['夜色慢慢落在窗前','风带着旋律经过身边','把每个字唱给你听','这一刻让音乐缓缓流动'][i%4];
+  return `[${i*6000},5400]`+Array.from(text).map((word,j,all)=>`(${i*6000+Math.floor(j*5400/all.length)},${Math.floor(5400/all.length)},0)${word}`).join('');
+}).join('\n');
 const searchTracks=tracks.slice(0,2).map((t,i)=>({...t,id:'netease-'+(9000+i),title:'搜索独立曲目 '+(i+1),onlineSource:{...t.onlineSource,id:String(9000+i)}}));
 let releaseDelayed;
 const delayedPage = new Promise(resolve => { releaseDelayed=resolve; });
@@ -64,10 +68,11 @@ await page.route('**/api/**',async route=>{
   const json=p.endsWith('/search')?{provider:'netease',query:'fixture',tracks:searchTracks,offset:0,limit:20,total:2,hasMore:false}:p.includes('/prepare/')?{audioUrl:url.origin+'/api/fixture.wav',duration:180}:p==='/api/library'?{version:1,albums:[],genres:[],roots:[],scan:{running:false},onlineEnabled:true}:
     p==='/api/audio/capabilities'?{decoderAvailable:false,nativeAvailable:false,devices:[]}:
     p.endsWith('/auth/status')?{loggedIn:p.includes('/netease/'),profile:{nickname:'合成测试用户',userId:'12345'}}:
+    p.endsWith('/playlist-management')?{session:'synthetic',create:true,rename:true,delete:true,add:true,remove:true}:
     p.endsWith('/playlists')?{playlists:[{id:'123',name:'合成歌单 · 档案测试',trackCount:120,owned:true},{id:'456',name:'延迟歌单',trackCount:12,owned:true}],hasMore:false}:
     p.endsWith('/tracks')?{tracks:p.includes('/456/')?[]:tracks.slice(Number(url.searchParams.get('offset')),Number(url.searchParams.get('offset'))+50),total:p.includes('/456/')?0:120}:
     p.includes('/together')?{session:'test',inRoom:false,active:false,queueIds:[],chat:{connected:false,messages:[]}}:
-    p.endsWith('/info')?{track:tracks[0],album:{title:'合成专辑'},lyrics:{original:fixtureLyrics}}:
+    p.endsWith('/info')?{track:tracks[0],album:{title:'合成专辑'},lyrics:{original:fixtureLyrics,yrc:wordLyrics}}:
     p.includes('/lyric')?{original:fixtureLyrics}:{};
   await route.fulfill({json}).catch(()=>{});
 });
@@ -310,6 +315,16 @@ try {
   await page.locator('.music-back').click(); await page.waitForTimeout(1300);
   assert.equal(await page.evaluate(()=>window.rhineMusic.selectedAlbum?.id),beforeSearch.id,'Search back restores the previous shelf selection');
   report.searchReturn=true;
+  const orderSelection = await page.evaluate(()=>window.rhineMusic.selectedAlbum?.id);
+  await page.locator('[data-action="manage-playlists"]').dispatchEvent('click');
+  await page.locator('[data-move="123"][data-direction="1"]').click();
+  await page.waitForFunction(()=>document.querySelector('.playlist-choice')?.getAttribute('data-choose')==='456');
+  assert.equal(await page.evaluate(()=>window.rhineMusic.selectedAlbum?.id), orderSelection, 'sorting preserves the selected song');
+  await page.screenshot({path:output+'/playlist-order.png'});
+  await page.locator('[data-order]').selectOption('default');
+  await page.waitForFunction(()=>document.querySelector('.playlist-choice')?.getAttribute('data-choose')==='123');
+  await page.locator('[data-close]').click();
+  report.playlistOrderPreservesSelection = true;
   await page.locator('#transport-track').click();
   await page.waitForFunction(()=>document.querySelector('#album-detail-content > h1')?.textContent.includes('搜索独立曲目 1') && document.querySelector('#music-detail')?.getAttribute('aria-hidden')==='false');
   await page.locator('[data-action="search"]').first().click();

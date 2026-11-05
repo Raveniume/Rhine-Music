@@ -18,55 +18,80 @@ export class AmlLyricSurface {
   private visible = false;
   private reducedMotion = false;
   private documentKey = "";
+  private seekTimes: number[] = [];
+  private settleUntil = 0;
+  private readonly events = new AbortController();
 
   constructor(host: HTMLElement, seek: SeekHandler) {
     this.host = host;
     this.seek = seek;
     this.player = new LyricPlayer();
-    this.player.setEnableBlur(true);
+    this.player.setEnableBlur(false);
     this.player.setEnableScale(true);
     this.reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
     this.player.setEnableSpring(!this.reducedMotion);
-    this.player.setOverscanPx(420);
+    this.player.setEnableScale(!this.reducedMotion);
+    this.player.setAlignPosition(0.42);
+    this.player.setOverscanPx(240);
     this.player.setWordFadeWidth(0.5);
     this.player.addEventListener("line-click", event => {
-      const line = (event as CustomEvent & { line?: { startTime?: number } }).line;
-      if (line && Number.isFinite(line.startTime)) this.seek(Math.max(0, Number(line.startTime) / 1000));
+      // AMLL moves the visual line start earlier for its entrance animation.
+      // Audio seeking must use the unmodified source timestamp.
+      const time = this.seekTimes[(event as Event & { lineIndex: number }).lineIndex];
+      if (Number.isFinite(time)) this.seek(Math.max(0, time / 1000));
     });
     host.replaceChildren(this.player.getElement());
     host.classList.add("amll-lyrics-host");
+    host.ownerDocument.addEventListener('visibilitychange', () => this.syncVisibility(), { signal: this.events.signal });
+    // Paused lyrics still respond to scrolling, then return to an idle clock.
+    for (const event of ['wheel', 'pointerdown', 'pointermove', 'keydown']) {
+      host.addEventListener(event, () => { this.settleUntil = performance.now() + 1200; this.start(); }, { signal: this.events.signal, passive: true });
+    }
   }
 
   setDocument(document: LyricDocument, key: string, time: number) {
     if (this.disposed || key === this.documentKey) return;
     this.documentKey = key;
+    this.seekTimes = document.lines.map(line => line.startTime);
     const lines = document.lines.map(line => ({
       ...line,
-      words: line.words.length ? line.words : [{ startTime: line.startTime, endTime: line.endTime, word: "" }],
+      words: line.words.length ? line.words.map(word => ({ ...word })) : [{ startTime: line.startTime, endTime: line.endTime, word: "" }],
     })) as LyricLine[];
     this.player.setLyricLines(lines, Math.max(0, time) * 1000);
     this.player.update(0);
+    this.settleUntil = performance.now() + 1200;
   }
 
   setTime(time: number, playing: boolean, isSeek = false) {
     if (this.disposed) return;
-    this.clockTime = Math.max(0, Number.isFinite(time) ? time : 0);
-    this.clockAt = performance.now();
+    const now = performance.now(), next = Math.max(0, Number.isFinite(time) ? time : 0);
+    const changed = next !== this.clockTime || playing !== this.playing || isSeek;
+    if (!changed) return;
+    const jump = isSeek || Math.abs(next - this.currentTime(now)) > 0.5;
+    this.clockTime = next;
+    this.clockAt = now;
     this.playing = playing;
-    this.player.setCurrentTime(this.clockTime * 1000, isSeek);
-    if (playing) this.player.resume(); else this.player.pause();
-    if (this.visible && !this.reducedMotion) this.start();
-    else if (!playing) this.stop();
+    if (!this.canRender()) { this.player.pause(); this.stop(); return; }
+    this.player.setCurrentTime(next * 1000, jump);
+    if (playing) this.player.resume(); else { this.player.pause(); this.settleUntil = now + 1200; }
+    this.start();
   }
 
   setVisible(visible: boolean) {
     if (this.disposed || this.visible === visible) return;
     this.visible = visible;
-    if (visible) {
+    this.syncVisibility();
+  }
+
+  private canRender() { return this.visible && this.host.isConnected && !this.host.ownerDocument.hidden; }
+  private currentTime(now = performance.now()) { return this.clockTime + (this.playing ? Math.max(0, now - this.clockAt) / 1000 : 0); }
+  private syncVisibility() {
+    if (this.canRender()) {
+      this.player.setCurrentTime(this.currentTime() * 1000, true);
       if (this.playing) this.player.resume();
       else this.player.pause();
-      if (!this.reducedMotion) this.start();
-      else this.player.update(0);
+      this.settleUntil = performance.now() + 1200;
+      this.start();
     } else {
       this.player.pause();
       this.stop();
@@ -77,26 +102,30 @@ export class AmlLyricSurface {
     if (this.disposed || this.reducedMotion === reduced) return;
     this.reducedMotion = reduced;
     this.player.setEnableSpring(!reduced);
-    if (reduced) { this.stop(); this.player.update(0); }
-    else if (this.visible) this.start();
+    this.player.setEnableScale(!reduced);
+    this.settleUntil = performance.now() + (reduced ? 0 : 1200);
+    if (this.canRender()) { this.player.update(0); this.start(); }
   }
 
   reset() {
+    this.stop();
     this.documentKey = "";
     this.player.setLyricLines([], 0);
     this.player.update(0);
   }
 
   private start() {
-    if (this.frame || this.disposed || !this.visible || this.reducedMotion) return;
+    if (this.frame || this.disposed || !this.canRender()) return;
     this.lastFrame = performance.now();
     const tick = (now: number) => {
-      if (this.disposed) return;
+      this.frame = 0;
+      if (this.disposed || !this.canRender()) return;
+      if (now - this.lastFrame < 1000 / 60 - 1) { this.frame = requestAnimationFrame(tick); return; }
       const delta = Math.min(100, Math.max(0, now - this.lastFrame));
       this.lastFrame = now;
-      if (this.playing) this.player.setCurrentTime((this.clockTime + (now - this.clockAt) / 1000) * 1000);
-      this.player.update(delta);
-      this.frame = requestAnimationFrame(tick);
+      if (this.playing) this.player.setCurrentTime(this.currentTime(now) * 1000);
+      this.player.update(this.reducedMotion ? 0 : delta);
+      if (this.playing || now < this.settleUntil) this.frame = requestAnimationFrame(tick);
     };
     this.frame = requestAnimationFrame(tick);
   }
@@ -110,6 +139,7 @@ export class AmlLyricSurface {
     if (this.disposed) return;
     this.disposed = true;
     this.stop();
+    this.events.abort();
     this.player.dispose();
     this.host.replaceChildren();
     this.host.classList.remove("amll-lyrics-host");

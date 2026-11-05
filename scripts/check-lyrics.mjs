@@ -53,3 +53,15 @@ test('instrumental and unavailable states do not fabricate lyric lines', () => {
   assert.equal(document.unavailable, true);
 });
 
+test('invalid enhanced lyrics fall back to a valid line document', () => {
+  const document = parseLyricDocument({ yrc: 'broken', original: '[00:02]仍然可以显示', translated: '[00:02]Still readable' });
+  assert.equal(document.sourceFormat, 'lrc');
+  assert.equal(document.hasWordTiming, false);
+  assert.equal(document.lines[0].translatedLyric, 'Still readable');
+});
+
+test('enhanced translation follows the word-timed line rather than the older LRC stamp', () => {
+  const document = parseLyricDocument({ yrc: '[1200,1000](1200,500,0)你(1700,500,0)好', translated: '[00:01]old', ytranslated: '[00:01.2]Hello' });
+  assert.equal(document.lines[0].translatedLyric, 'Hello');
+});
+

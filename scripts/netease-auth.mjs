@@ -61,7 +61,7 @@ export class NeteaseAuth {
       await this.write(async () => {
         if (challenge.epoch !== this.epoch) return;
         try { await this.store.save(cookie); this.warning = undefined; }
-        catch { this.warning = '已登录，但本机无法保存登录信息，关闭软件后需要重新扫码。'; }
+        catch { this.warning = '已登录，但无法保存登录信息，关闭软件后需要重新扫码。'; }
         if (challenge.epoch !== this.epoch) return;
         this.cookie = cookie; this.profile = undefined; this.challenge = undefined; this.epoch++; this.changed();
       });

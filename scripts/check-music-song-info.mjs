@@ -36,7 +36,7 @@ test('song information retains real album fields, synced lyrics and bounded dedu
 
 test('missing lyrics do not prevent metadata, and logout rejects a stale information response', async () => {
   const api = new NeteaseOnline({ sessionStore: store, call: async method => {
-    if (method === 'lyric') throw new Error('upstream failure');
+    if (method === 'lyric' || method === 'lyricLegacy') throw new Error('upstream failure');
     return { body: method === 'songDetail' ? { code: 200, songs: [song] } : { code: 200, album: {} } };
   } });
   const info = await api.songInfo('123');
@@ -62,4 +62,24 @@ test('metadata saturation queues playback first and never exceeds four upstream 
   assert.equal(calls[4], 'playback'); assert.equal(api.active, 4);
   while (api.active || api.waiting.length) { releases.shift()?.(); await new Promise(resolve => setImmediate(resolve)); }
   await Promise.all([...occupied, background, playback]); assert.equal(api.active, 0);
+});
+
+test('enhanced lyrics reach the UI contract and old endpoint is only a failure fallback', async () => {
+  const calls = []; let failEnhanced = false;
+  const api = new NeteaseOnline({ sessionStore: store, call: async method => {
+    calls.push(method);
+    if (method === 'songDetail') return { body: { code: 200, songs: [song] } };
+    if (method === 'lyric' && failEnhanced) throw new Error('enhanced unavailable');
+    if (method === 'lyric') return { body: { code: 200, lrc: { lyric: '[00:01]你好' }, yrc: { lyric: '[1000,1000](1000,500,0)你(1500,500,0)好' }, ytlrc: { lyric: '[00:01]Hello' } } };
+    if (method === 'lyricLegacy') return { body: { code: 200, lrc: { lyric: '[00:01]旧歌词' } } };
+    return { body: { code: 200, album: {} } };
+  } });
+  const enhanced = await api.songInfo('123');
+  assert.ok(enhanced.lyrics.yrc.includes('(1500,500,0)'));
+  assert.equal(enhanced.lyrics.ytranslated, '[00:01]Hello');
+  assert.equal(calls.includes('lyricLegacy'), false);
+  api.songInfoCache.clear(); failEnhanced = true;
+  const fallback = await api.songInfo('123');
+  assert.equal(fallback.lyrics.original, '[00:01]旧歌词');
+  assert.equal(calls.filter(method => method === 'lyricLegacy').length, 1);
 });

@@ -60,7 +60,7 @@ export class PlatformAuth {
         if (this.challenge !== challenge || challenge.epoch !== this.epoch || this.now() >= challenge.expiresAt) return;
         let warning;
         try { await this.store.save({ credential: result.credential }); }
-        catch { warning = '已登录，但本机无法保存登录信息，关闭后需要重新扫码。'; }
+        catch { warning = '已登录，但无法保存登录信息，关闭后需要重新扫码。'; }
         if (this.challenge !== challenge || challenge.epoch !== this.epoch || this.now() >= challenge.expiresAt) {
           // Cancel/logout can occur while DPAPI is writing. Restore the last
           // committed account before the next serialized login/logout write.
