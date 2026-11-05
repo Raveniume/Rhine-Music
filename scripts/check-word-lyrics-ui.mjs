@@ -44,6 +44,15 @@ try {
   const style = await page.locator('.amll-lyric-player').evaluate(node => ({ font: parseFloat(getComputedStyle(node).fontSize), height: node.clientHeight, parent: node.parentElement.clientHeight }));
   assert.ok(style.font >= 20 && style.font <= 32, JSON.stringify(style));
   assert.ok(style.height > 250 && style.height <= style.parent + 1, 'word viewport fills lyric area');
+  const engine = await page.evaluate(() => ({
+    blend: getComputedStyle(document.querySelector('.amll-lyric-player')).mixBlendMode,
+    gradientLines: document.querySelectorAll('.FmKaba_gradientMask').length,
+    wordBodies: document.querySelectorAll('.FmKaba_emphasizeWrapper, .FmKaba_wordBody').length,
+    interludeDots: document.querySelectorAll('.FmKaba_interludeDots').length,
+  }));
+  assert.equal(engine.blend, 'plus-lighter');
+  assert.ok(engine.gradientLines > 0, 'AMLL gradient mask is active on the current line');
+  assert.ok(engine.wordBodies > 0, 'AMLL word-level DOM is present');
   await page.evaluate(() => {
     window.updateCount = 0;
     const player = view.amll.player, update = player.update.bind(player);

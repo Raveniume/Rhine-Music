@@ -26,14 +26,29 @@ export class AmlLyricSurface {
     this.host = host;
     this.seek = seek;
     this.player = new LyricPlayer();
-    this.player.setEnableBlur(false);
+    // Keep AMLL's complete Apple Music style renderer enabled.  The renderer
+    // owns line springs, scale hierarchy, blur falloff, gradient word masks,
+    // interlude dots and background vocal placement; this wrapper only feeds it
+    // the clock and the parsed lyric document.
+    this.player.setEnableBlur(true);
     this.player.setEnableScale(true);
     this.reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
     this.player.setEnableSpring(!this.reducedMotion);
     this.player.setEnableScale(!this.reducedMotion);
+    this.player.setAlwaysPostpositionBackground(true);
+    this.player.setHidePassedLines(false);
+    this.player.setEnableAutoSeekDetection(true);
+    this.player.setLyricProcessConfig({ optimizeOptions: {
+      normalizeSpaces: false,
+      resetLineTimestamps: false,
+      syncMainAndBackgroundLines: true,
+      cleanUnintentionalOverlaps: true,
+      tryAdvanceStartTime: true,
+    } });
     this.player.setAlignPosition(0.42);
     this.player.setOverscanPx(240);
-    this.player.setWordFadeWidth(0.5);
+    // AMLL documents this value as its Apple Music for Android style.
+    this.player.setWordFadeWidth(1);
     this.player.addEventListener("line-click", event => {
       // AMLL moves the visual line start earlier for its entrance animation.
       // Audio seeking must use the unmodified source timestamp.
@@ -74,7 +89,8 @@ export class AmlLyricSurface {
     if (!this.canRender()) { this.player.pause(); this.stop(); return; }
     this.player.setCurrentTime(next * 1000, jump);
     if (playing) this.player.resume(); else { this.player.pause(); this.settleUntil = now + 1200; }
-    this.start();
+    if (this.reducedMotion) { this.player.update(0); this.stop(); }
+    else this.start();
   }
 
   setVisible(visible: boolean) {
@@ -91,7 +107,7 @@ export class AmlLyricSurface {
       if (this.playing) this.player.resume();
       else this.player.pause();
       this.settleUntil = performance.now() + 1200;
-      this.start();
+      if (!this.reducedMotion) this.start(); else this.player.update(0);
     } else {
       this.player.pause();
       this.stop();
@@ -104,7 +120,11 @@ export class AmlLyricSurface {
     this.player.setEnableSpring(!reduced);
     this.player.setEnableScale(!reduced);
     this.settleUntil = performance.now() + (reduced ? 0 : 1200);
-    if (this.canRender()) { this.player.update(0); this.start(); }
+    this.player.setEnableBlur(!reduced);
+    if (this.canRender()) {
+      this.player.update(0);
+      if (!reduced) this.start(); else this.stop();
+    }
   }
 
   reset() {

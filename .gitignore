@@ -16,6 +16,7 @@ reference/**/*.jpg
 art/.cache/
 .worktrees/
 release/
+release-assets/
 video/
 __pycache__/
 *.pyc

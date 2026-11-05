@@ -211,11 +211,23 @@
 #song-lyrics .amll-lyric-player {
   --amll-lp-color: var(--ink);
   --amll-lp-font-size: clamp(24px, 2vw, 32px);
+  --amll-lp-bg-line-scale: .7;
+  --amll-lp-bottom-line-font-size: max(.7em, 12px);
   --amll-lp-hover-bg-color: color-mix(in srgb, var(--ink) 6%, transparent);
   --amll-lp-line-width-aspect: .96;
-  --amll-lp-line-padding-x: .25em;
-  mix-blend-mode: normal;
+  --amll-lp-line-padding-x: .35em;
+  mix-blend-mode: plus-lighter;
   font-family: inherit;
   font-weight: 600;
   line-height: 1.55;
+}
+#song-lyrics[data-engine="amll"] .FmKaba_lyricMainLine {
+  text-wrap: pretty;
+}
+#song-lyrics[data-engine="amll"] .FmKaba_lyricLineWrapper {
+  border-radius: .18em;
+}
+#song-lyrics[data-engine="amll"] .FmKaba_lyricLineWrapper:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--accent) 75%, transparent);
+  outline-offset: 3px;
 }
