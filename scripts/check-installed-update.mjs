@@ -6,15 +6,16 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { chromium } from 'playwright';
 import { createHash } from 'node:crypto';
-const exe = process.env.RHINE_DESKTOP_EXE;
+const exe = process.env.RHINE_DESKTOP_EXE ? path.resolve(process.env.RHINE_DESKTOP_EXE) : undefined;
 const expected = process.env.RHINE_UPDATE_EXPECTED;
+const verifyInstalled = process.env.RHINE_UPDATE_VERIFY_INSTALLED === '1';
 if (!exe || !/^\d+\.\d+\.\d+$/.test(expected || '')) throw Error('Set RHINE_DESKTOP_EXE and RHINE_UPDATE_EXPECTED. This installs the actual GitHub update.');
 const output = path.resolve('artifacts/update-verification');
 await fs.mkdir(output, { recursive: true });
 const data = path.join(output, 'isolated-data'), profile = path.join(output, 'isolated-webview');
 await fs.mkdir(data, { recursive: true });
 const sentinel = path.join(data, 'update-test-preserved.txt');
-await fs.writeFile(sentinel, 'isolated-update-data');
+if (!verifyInstalled) await fs.writeFile(sentinel, 'isolated-update-data');
 const source = JSON.parse(await fs.readFile(path.join(path.dirname(exe), 'BUILD-INFO.json'), 'utf8'));
 const port = 9348;
 const child = spawn(exe, [], { cwd: path.dirname(exe), windowsHide: true, stdio: 'ignore', env: {
@@ -36,7 +37,7 @@ async function connect() {
 }
 let { browser, page } = await connect();
 page.setDefaultTimeout(120000);
-const report = { runtimeChecked: false, sourceVersion: source.version, targetVersion: expected, mockedNetwork: false, scope: 'Installed Windows application; actual GitHub download, silent installer, automatic restart; isolated data and muted audio' };
+const report = verifyInstalled ? JSON.parse(await fs.readFile(path.join(output, 'in-app-update.json'), 'utf8')) : { runtimeChecked: false, sourceVersion: source.version, targetVersion: expected, mockedNetwork: false, scope: 'Installed Windows application; actual GitHub download, silent installer, automatic restart; isolated data and muted audio' };
 async function about(initialize = false) {
   await page.waitForFunction(() => !!window.rhineMusic);
   await page.evaluate(initialize => {
@@ -47,34 +48,44 @@ async function about(initialize = false) {
     document.querySelector('.music-boot-skip')?.click();
     document.querySelector('.rhine-loading button')?.click();
   }, initialize);
-  await page.locator('[data-action="settings"]').first().click({ force: true });
+  // The bridge is available before the startup overlay finishes. A forced
+  // click at that point can be swallowed by the overlay.
+  await page.waitForFunction(() => !document.querySelector('#music-loading'));
+  await page.evaluate(() => document.querySelector('.music-boot-skip')?.click());
+  await page.waitForFunction(() => !['running', 'revealing'].includes(document.querySelector('.music-app')?.dataset.musicBoot));
+  await page.locator('[data-action="settings"]').first().click();
   await page.locator('[data-category="about"]').click();
 }
 try {
-  await about(true);
-  await page.locator('[data-action="check-update"]').click();
-  await page.waitForFunction(() => !document.querySelector('#update-status')?.textContent?.includes('正在连接'));
-  report.initialStatus = await page.locator('#update-status').innerText();
-  await page.screenshot({ path: path.join(output, 'check-update.png') });
-  if (process.env.RHINE_UPDATE_CHECK_ONLY === '1') {
-    console.log(JSON.stringify(report));
-  } else {
-    assert.match(report.initialStatus, new RegExp(`发现新版本 V${expected.replaceAll('.', '\\.')}`));
-    await page.locator('[data-update-choice="confirm"]').click();
-    await page.waitForFunction(() => document.querySelector('#update-status')?.textContent?.includes('正在下载'));
-    await page.screenshot({ path: path.join(output, 'download.png') });
-    const started = Date.now();
-    while (child.exitCode === null && Date.now() - started < 360000) {
-      const status = await page.locator('#update-status').innerText().catch(() => '');
-      if (/失败|取消/.test(status)) throw Error(status);
-      await pause(500);
+  await about(!verifyInstalled);
+  const started = Date.now();
+  if (!verifyInstalled) {
+    await page.locator('[data-action="check-update"]').click();
+    await page.waitForFunction(() => !document.querySelector('#update-status')?.textContent?.includes('正在连接'));
+    report.initialStatus = await page.locator('#update-status').innerText();
+    await page.screenshot({ path: path.join(output, 'check-update.png') });
+    if (process.env.RHINE_UPDATE_CHECK_ONLY === '1') {
+      console.log(JSON.stringify(report));
+    } else {
+      assert.match(report.initialStatus, new RegExp(`发现新版本 V${expected.replaceAll('.', '\\.')}`));
+      await page.locator('[data-update-choice="confirm"]').click();
+      await page.waitForFunction(() => document.querySelector('#update-status')?.textContent?.includes('正在下载'));
+      await page.screenshot({ path: path.join(output, 'download.png') });
+      while (child.exitCode === null && Date.now() - started < 360000) {
+        const status = await page.locator('#update-status').innerText().catch(() => '');
+        if (/失败|取消/.test(status)) throw Error(status);
+        await pause(500);
+      }
+      assert.notEqual(child.exitCode, null, 'Old app exits after verifying the download');
+      await browser.close().catch(() => {});
+      await pause(3000);
+      ({ browser, page } = await connect());
+      page.setDefaultTimeout(120000);
+      report.automaticRestart = true;
+      await about();
     }
-    assert.notEqual(child.exitCode, null, 'Old app exits after verifying the download');
-    await browser.close().catch(() => {});
-    await pause(3000);
-    ({ browser, page } = await connect());
-    page.setDefaultTimeout(120000);
-    await about();
+  }
+  if (process.env.RHINE_UPDATE_CHECK_ONLY !== '1') {
     const installed = JSON.parse(await fs.readFile(path.join(path.dirname(exe), 'BUILD-INFO.json'), 'utf8'));
     assert.equal(installed.version, expected);
     await page.locator('[data-action="check-update"]').click();
@@ -95,8 +106,8 @@ try {
     report.settings = await page.evaluate(() => JSON.parse(localStorage.getItem('rhine-music-preferences')));
     assert.equal(await page.evaluate(() => localStorage.getItem('rhine-update-test-sentinel')), 'preserve-webview-data');
     assert.equal(report.settings.theme, 'night');
-    report.automaticRestart = true;
-    report.elapsedMs = Date.now() - started;
+    report.verificationElapsedMs = Date.now() - started;
+    if (verifyInstalled) { report.verificationResumedAfter = report.error; delete report.error; }
     report.installed = installed;
     report.runtimeChecked = true;
     console.log(JSON.stringify(report));
