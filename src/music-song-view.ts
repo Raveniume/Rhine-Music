@@ -290,7 +290,9 @@ export class MusicSongView {
   private paintLyrics(node: HTMLElement, cached: CachedSong | undefined, time: number, track: MusicTrack) {
     const document = cached?.document;
     this.emitDesktopLyric(track, cached, time);
-    const useAmll = !!document && document.lines.length > 0 && (document.sourceFormat !== 'lrc' || document.hasWordTiming);
+    // Plain LRC still uses AMLL's line springs, scale and blur. Word masks only
+    // come from real provider timestamps; do not invent syllable timing.
+    const useAmll = !!document && document.lines.length > 0;
     if (useAmll && !this.amllClass && !this.amllLoading) {
       this.amllLoading = true;
       void import('./amll-lyrics').then(module => {

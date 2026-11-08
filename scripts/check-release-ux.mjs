@@ -9,9 +9,9 @@ const desktop=process.env.RHINE_DESKTOP_EXE;
 const output = desktop ? 'artifacts/current-native-ux' : 'artifacts/current-ux';
 await fs.mkdir(output, {recursive:true});
 let server,browser,page,child;
-async function recordTransition() {
+async function recordTransition(name = 'playlist-transition') {
   const cdp=await page.context().newCDPSession(page), frames=[], writes=[];
-  const dir=path.resolve(output,'playlist-transition'); await fs.mkdir(dir,{recursive:true});
+  const dir=path.resolve(output,name); await fs.mkdir(dir,{recursive:true});
   cdp.on('Page.screencastFrame',event=>{
     const name=String(frames.length).padStart(4,'0')+'.jpg';
     frames.push({file:name,time:event.metadata.timestamp});
@@ -55,6 +55,7 @@ const tracks = Array.from({length:120},(_,i)=>({id:`netease-${1000+i}`,title:`�
 const fixtureLyrics = Array.from({length:20},(_,i)=>`[00:${String(i*3).padStart(2,'0')}.00]合成歌词第 ${i+1} 行 · 用于检查底部渐隐`).join('\n');
 const wordLyrics = Array.from({length:20},(_,i)=>{
   const text=['夜色慢慢落在窗前','风带着旋律经过身边','把每个字唱给你听','这一刻让音乐缓缓流动'][i%4];
+  if(i===0)return '[0,5400](0,500,0)夜(500,500,0)色(1000,500,0)慢(1500,500,0)慢(2000,500,0)落(2500,500,0)在(3000,600,0)窗(3600,1800,0)前';
   return `[${i*6000},5400]`+Array.from(text).map((word,j,all)=>`(${i*6000+Math.floor(j*5400/all.length)},${Math.floor(5400/all.length)},0)${word}`).join('');
 }).join('\n');
 const searchTracks=tracks.slice(0,2).map((t,i)=>({...t,id:'netease-'+(9000+i),title:'搜索独立曲目 '+(i+1),onlineSource:{...t.onlineSource,id:String(9000+i)}}));
@@ -135,6 +136,26 @@ try {
     for(const tab of ['lyrics','info','together']) {
       if(tab==='together'&&await page.locator('#song-tab-together').count()===0)continue;
       await page.locator(`#song-tab-${tab}`).click(); await page.waitForTimeout(1000);
+      if(desktop && viewport.width===1440 && tab==='lyrics') {
+        await page.locator('#song-lyrics[data-engine="amll"]').waitFor();
+        const stopRecording=await recordTransition('lyrics-playback');
+        await page.locator('#song-toggle-stop').click();
+        const motion=await page.evaluate(async()=>{
+          const samples=[], start=performance.now();
+          while(performance.now()-start<8000){
+            const root=document.querySelector('.amll-lyric-player');
+            samples.push({y:root.querySelector('[class*="lyricLineWrapper"]').getBoundingClientRect().top,
+              running:root.getAnimations({subtree:true}).filter(a=>a.playState==='running'&&/word/.test(a.id)).map(a=>a.id)});
+            await new Promise(resolve=>setTimeout(resolve,100));
+          }
+          return samples;
+        });
+        await stopRecording();
+        await page.locator('#song-toggle-stop').click();
+        assert.ok(motion.some(s=>s.running.some(id=>id.includes('emphasize'))),'Native playback runs long-note emphasis');
+        assert.ok(new Set(motion.map(s=>Math.round(s.y))).size>4,'Native playback scrolls through intermediate positions');
+        report.nativeLyricMotion={samples:motion.length,springPositions:new Set(motion.map(s=>Math.round(s.y))).size,longNote:true};
+      }
       const geometry=await page.evaluate(()=>{
         const box=s=>document.querySelector(s).getBoundingClientRect().toJSON();
         return {title:box('#album-detail-content > h1'),artist:box('.detail-artist'),play:box('#song-toggle-stop'),add:box('.song-add-playlist'),tabs:box('.song-view-tabs'),heading:box('.song-view-heading'),firstTab:box('#song-tab-info'),font:getComputedStyle(document.querySelector('#album-detail-content > h1')).fontSize};

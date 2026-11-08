@@ -30,9 +30,8 @@ export class AmlLyricSurface {
     // owns line springs, scale hierarchy, blur falloff, gradient word masks,
     // interlude dots and background vocal placement; this wrapper only feeds it
     // the clock and the parsed lyric document.
-    this.player.setEnableBlur(true);
-    this.player.setEnableScale(true);
     this.reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    this.player.setEnableBlur(!this.reducedMotion);
     this.player.setEnableSpring(!this.reducedMotion);
     this.player.setEnableScale(!this.reducedMotion);
     this.player.setAlwaysPostpositionBackground(true);
@@ -45,10 +44,10 @@ export class AmlLyricSurface {
       cleanUnintentionalOverlaps: true,
       tryAdvanceStartTime: true,
     } });
-    this.player.setAlignPosition(0.42);
+    this.player.setAlignPosition(0.35);
     this.player.setOverscanPx(240);
-    // AMLL documents this value as its Apple Music for Android style.
-    this.player.setWordFadeWidth(1);
+    // Use the upstream iPad-style mask: a defined leading edge with a soft fade.
+    this.player.setWordFadeWidth(0.5);
     this.player.addEventListener("line-click", event => {
       // AMLL moves the visual line start earlier for its entrance animation.
       // Audio seeking must use the unmodified source timestamp.
@@ -60,7 +59,7 @@ export class AmlLyricSurface {
     host.ownerDocument.addEventListener('visibilitychange', () => this.syncVisibility(), { signal: this.events.signal });
     // Paused lyrics still respond to scrolling, then return to an idle clock.
     for (const event of ['wheel', 'pointerdown', 'pointermove', 'keydown']) {
-      host.addEventListener(event, () => { this.settleUntil = performance.now() + 1200; this.start(); }, { signal: this.events.signal, passive: true });
+      host.addEventListener(event, () => { this.settleUntil = performance.now() + 1200; if (!this.reducedMotion) this.start(); }, { signal: this.events.signal, passive: true });
     }
   }
 
@@ -83,12 +82,16 @@ export class AmlLyricSurface {
     const changed = next !== this.clockTime || playing !== this.playing || isSeek;
     if (!changed) return;
     const jump = isSeek || Math.abs(next - this.currentTime(now)) > 0.5;
+    const transportChanged = playing !== this.playing;
     this.clockTime = next;
     this.clockAt = now;
     this.playing = playing;
     if (!this.canRender()) { this.player.pause(); this.stop(); return; }
     this.player.setCurrentTime(next * 1000, jump);
-    if (playing) this.player.resume(); else { this.player.pause(); this.settleUntil = now + 1200; }
+    // resume walks all lines and restarts Web Animations. Only do it on an
+    // actual transport change, not on each audio timeupdate.
+    if (transportChanged) { if (playing) this.player.resume(); else this.player.pause(); }
+    if (!playing) this.settleUntil = now + 1200;
     if (this.reducedMotion) { this.player.update(0); this.stop(); }
     else this.start();
   }

@@ -19,7 +19,7 @@ window.state={currentTrack:track,currentTime:0,duration:180,transport:'playing',
 const album={id:'test',title:track.title,artist:track.artist,tracks:[track]};
 window.view=new MusicSongView(document.querySelector('#mini'),t=>window.seeks.push(t),()=>window.reduced);
 window.replaceLyrics=(enhanced=true)=>{
- const source=texts.map((text,i)=>'['+(i*6000)+',5400]'+Array.from(text).map((word,j,all)=>'('+(i*6000+Math.floor(j*5400/all.length))+','+Math.floor(5400/all.length)+',0)'+word).join('')).join(String.fromCharCode(10));
+ const source=texts.map((text,i)=>i===0?'[0,5400](0,500,0)夜(500,500,0)色(1000,500,0)渐(1500,500,0)渐(2000,500,0)落(2500,500,0)在(3000,600,0)窗(3600,1800,0)前':'['+(i*6000)+',5400]'+Array.from(text).map((word,j,all)=>'('+(i*6000+Math.floor(j*5400/all.length))+','+Math.floor(5400/all.length)+',0)'+word).join('')).join(String.fromCharCode(10));
  const original=texts.map((text,i)=>'[00:'+String(i*6).padStart(2,'0')+']'+text).join(String.fromCharCode(10));
  const lyrics=enhanced?{original,yrc:source}:{original};const document=parseLyricDocument(lyrics);
  view.cache.set('netease:123',{at:Date.now(),lyricAt:Date.now(),document,lines:lyricDocumentToLegacyLines(document),info:{track,album:{title:'显示测试'},lyrics}});
@@ -32,12 +32,13 @@ window.advance=(time,playing=true)=>{state={...state,currentTime:time,playing,tr
 let server, browser;
 try {
   server = await createServer({ server: { host: '127.0.0.1', port: 0 }, logLevel: 'error' }); await server.listen();
-  browser = await chromium.launch({ executablePath: process.env.RHINE_BROWSER || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', headless: true, args: ['--mute-audio'] });
+  browser = await chromium.launch({ executablePath: process.env.RHINE_BROWSER || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', headless: true, args: ['--mute-audio', '--no-proxy-server'] });
   const context = await browser.newContext({ viewport: { width: 1100, height: 850 }, recordVideo: { dir: output, size: { width: 1100, height: 850 } } });
   const page = await context.newPage();
+  page.setDefaultTimeout(90000);
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   await page.route('**/api/**', route => route.fulfill({ json: {} }));
-  await page.goto(server.resolvedUrls.local[0] + output + '/index.html');
+  await page.goto(server.resolvedUrls.local[0] + output + '/index.html', {waitUntil: 'domcontentloaded', timeout: 90000});
   await page.waitForSelector('#song-lyrics[data-engine="amll"]');
   await page.waitForTimeout(500);
   assert.equal(await page.locator('.amll-lyric-player').count(), 1);
@@ -53,6 +54,27 @@ try {
   assert.equal(engine.blend, 'plus-lighter');
   assert.ok(engine.gradientLines > 0, 'AMLL gradient mask is active on the current line');
   assert.ok(engine.wordBodies > 0, 'AMLL word-level DOM is present');
+  await page.evaluate(() => window.advance(.1));
+  const wordMotion = await page.evaluate(async () => {
+    const samples = [], start = performance.now();
+    while (performance.now() - start < 7000) {
+      const root = document.querySelector('.amll-lyric-player');
+      const animated = root.getAnimations({subtree:true});
+      samples.push({
+        y: root.querySelector('[class*="lyricLineWrapper"]').getBoundingClientRect().top,
+        animations: animated.map(a => ({id:a.id, time:Math.round(Number(a.currentTime)), state:a.playState,
+          transform:getComputedStyle(a.effect.target).transform, shadow:getComputedStyle(a.effect.target).textShadow})),
+      });
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    return samples;
+  });
+  const running = wordMotion.flatMap(sample => sample.animations).filter(a => a.state === 'running');
+  await fs.writeFile(`${output}/motion-samples.json`, JSON.stringify({wordMotion},null,2));
+  assert.ok(running.some(a => /emphasize/.test(a.id)), 'long syllables play upstream emphasis animations');
+  assert.ok(new Set(running.map(a => a.transform)).size > 5, 'word transforms actually change during playback');
+  assert.ok(new Set(wordMotion.map(sample => Math.round(sample.y))).size > 5, 'YRC line transitions include intermediate spring positions');
+  await fs.writeFile(`${output}/motion-samples.json`, JSON.stringify({wordMotion},null,2));
   await page.evaluate(() => {
     window.updateCount = 0;
     const player = view.amll.player, update = player.update.bind(player);
@@ -92,11 +114,29 @@ try {
   assert.equal(await page.evaluate(() => view.amll.player.getEnableSpring()), false);
   assert.equal(await page.evaluate(() => view.amll.player.getEnableScale()), false);
   await page.evaluate(() => { window.replaceLyrics(false); window.advance(6, false); });
-  assert.equal(await page.locator('.amll-lyric-player').count(), 0);
-  assert.equal(await page.locator('.lyric-line').count(), 6, 'ordinary lyrics remain available after word lyrics');
+  assert.equal(await page.locator('.amll-lyric-player').count(), 1);
+  assert.equal(await page.evaluate(() => view.amll.player.isNonDynamic), true, 'LRC keeps the line animation without invented word timings');
+  await page.evaluate(() => { window.reduced = false; document.querySelector('.music-app').dataset.theme = 'night'; window.advance(4.7); });
+  const lineMotion = await page.evaluate(async () => {
+    const samples = [];
+    const start = performance.now();
+    while (performance.now() - start < 2400) {
+      const lines = [...document.querySelectorAll('[class*="lyricLineWrapper"]')].slice(0, 3);
+      samples.push(lines.map(line => ({y: line.getBoundingClientRect().top, transform: getComputedStyle(line).transform, blur: getComputedStyle(line).filter})));
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    return samples;
+  });
+  assert.ok(new Set(lineMotion.map(frame => Math.round(frame[1]?.y))).size > 5, 'LRC moves through intermediate spring positions across a real line boundary');
+  assert.ok(lineMotion.some(frame => frame.some(line => /blur\((?!0px)/.test(line.blur))), 'distant lines retain blur hierarchy');
+  await page.screenshot({path: `${output}/lines-night.png`});
+  await page.evaluate(() => { document.querySelector('.music-app').dataset.theme = 'day'; window.advance(7.5, false); });
+  await page.waitForTimeout(1300);
+  assert.equal(await page.locator('.amll-lyric-player').evaluate(node => getComputedStyle(node).mixBlendMode), 'normal', 'dark ink remains visible in light theme');
+  await page.screenshot({path: `${output}/lines-day.png`});
   await page.evaluate(() => view.dispose());
   assert.deepEqual(errors, []);
-  const report = { activeUpdatesIn700ms: frames, pausedUpdatesIn400ms: 0, hiddenUpdatesIn400ms: 0, seekSeconds: 12, syntheticData: true, runtime: 'Edge browser', checks: ['YRC', 'fallback', 'seek', 'both themes', 'pause', 'hidden', 'tab', 'reduced motion', 'dispose'] };
+  const report = { activeUpdatesIn700ms: frames, pausedUpdatesIn400ms: 0, hiddenUpdatesIn400ms: 0, seekSeconds: 12, wordTransformSamples: new Set(running.map(a => a.transform)).size, yrcSpringPositions: new Set(wordMotion.map(sample => Math.round(sample.y))).size, lrcSpringPositions: new Set(lineMotion.map(frame => Math.round(frame[1]?.y))).size, syntheticData: true, runtime: 'Edge browser', checks: ['YRC emphasis and springs', 'LRC springs and blur', 'seek', 'both themes', 'pause', 'hidden', 'tab', 'reduced motion', 'dispose'] };
   await fs.writeFile(`${output}/report.json`, JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report));
   const video = page.video();

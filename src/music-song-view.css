@@ -210,17 +210,19 @@
 #song-lyrics[data-engine="amll"]::before, #song-lyrics[data-engine="amll"]::after { display: none; }
 #song-lyrics .amll-lyric-player {
   --amll-lp-color: var(--ink);
-  --amll-lp-font-size: clamp(24px, 2vw, 32px);
+  --amll-lp-font-size: clamp(26px, 2.3vw, 38px);
   --amll-lp-bg-line-scale: .7;
   --amll-lp-bottom-line-font-size: max(.7em, 12px);
   --amll-lp-hover-bg-color: color-mix(in srgb, var(--ink) 6%, transparent);
   --amll-lp-line-width-aspect: .96;
   --amll-lp-line-padding-x: .35em;
+  --lyric-line-padding-x: .35em;
   mix-blend-mode: plus-lighter;
   font-family: inherit;
   font-weight: 600;
-  line-height: 1.55;
+  line-height: 1.25;
 }
+.music-app[data-theme="day"] #song-lyrics .amll-lyric-player { mix-blend-mode: normal; }
 #song-lyrics[data-engine="amll"] .FmKaba_lyricMainLine {
   text-wrap: pretty;
 }
