@@ -138,19 +138,26 @@ try {
       await page.locator(`#song-tab-${tab}`).click(); await page.waitForTimeout(1000);
       if(desktop && viewport.width===1440 && tab==='lyrics') {
         await page.locator('#song-lyrics[data-engine="amll"]').waitFor();
+        if(!await page.evaluate(()=>window.rhineMusic.player.playing)) await page.locator('#song-toggle-stop').click();
+        await page.waitForFunction(()=>window.rhineMusic.player.playing && window.rhineMusic.player.duration>0);
+        await page.locator('#song-view .playback-seek').evaluate(input=>{
+          input.value='0'; input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));
+        });
         const stopRecording=await recordTransition('lyrics-playback');
-        await page.locator('#song-toggle-stop').click();
         const motion=await page.evaluate(async()=>{
           const samples=[], start=performance.now();
           while(performance.now()-start<8000){
             const root=document.querySelector('.amll-lyric-player');
-            samples.push({y:root.querySelector('[class*="lyricLineWrapper"]').getBoundingClientRect().top,
-              running:root.getAnimations({subtree:true}).filter(a=>a.playState==='running'&&/word/.test(a.id)).map(a=>a.id)});
+            samples.push({y:root.querySelector('[class*="lyricMainLine"]').closest('[class*="lyricLineWrapper"]').getBoundingClientRect().top,
+              time:window.rhineMusic.player.currentTime,
+              running:root.getAnimations({subtree:true}).filter(a=>a.playState==='running'&&/word/.test(a.id)).map(a=>a.id),
+              all:root.getAnimations({subtree:true}).filter(a=>/emphasize/.test(a.id)).map(a=>({id:a.id,state:a.playState,time:a.currentTime}))});
             await new Promise(resolve=>setTimeout(resolve,100));
           }
           return samples;
         });
         await stopRecording();
+        await fs.writeFile(`${output}/native-lyric-motion.json`,JSON.stringify(motion,null,2));
         await page.locator('#song-toggle-stop').click();
         assert.ok(motion.some(s=>s.running.some(id=>id.includes('emphasize'))),'Native playback runs long-note emphasis');
         assert.ok(new Set(motion.map(s=>Math.round(s.y))).size>4,'Native playback scrolls through intermediate positions');
