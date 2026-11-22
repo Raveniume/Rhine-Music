@@ -1,6 +1,7 @@
 import type { MusicTrack } from "./music-types";
 import { queueEntryKey } from './playback-queue.ts';
 import { configureSpectrumAnalyser } from './music-flowing-wave.ts';
+import { EqualizerOutput, type EqualizerSettings } from './music-equalizer.ts';
 
 // This budget includes resident Float32 samples, the next encoded WAV and a
 // second encoded-size decode workspace reservation. It is not a browser heap cap.
@@ -47,6 +48,7 @@ export interface GaplessCallbacks {
 export class BrowserGaplessPlayer {
   private readonly context: AudioContext;
   private readonly gain: GainNode;
+  private readonly output: EqualizerOutput;
   private analyser?: AnalyserNode;
   private current?: Slot;
   private next?: Slot;
@@ -64,12 +66,13 @@ export class BrowserGaplessPlayer {
     this.callbacks = callbacks;
     this.context = context ?? new AudioContext();
     this.gain = this.context.createGain();
-    this.gain.connect(this.context.destination);
+    this.output = new EqualizerOutput(this.context, this.gain);
     this.context.addEventListener?.("statechange", this.onStateChange);
   }
 
   /** Call synchronously from the user play gesture, before any fetch or BGM wait. */
   unlock(): Promise<void> { return this.context.resume(); }
+  setEqualizer(settings: EqualizerSettings) { this.output.configure(settings); }
   get spectrumSampleRate(): number { return this.context.sampleRate; }
   volume(value: number): void { this.gain.gain.value = Math.max(0, Math.min(1, value)); }
   setSpectrumEnabled(enabled: boolean, responsive = false) {
@@ -168,7 +171,7 @@ export class BrowserGaplessPlayer {
   stop(): void { ++this.generation; this.clearSources(); this.current = undefined; }
   dispose(): void {
     if (this.disposed) return;
-    this.disposed = true; this.stop(); this.setSpectrumEnabled(false); this.gain.disconnect();
+    this.disposed = true; this.stop(); this.setSpectrumEnabled(false); this.gain.disconnect(); this.output.dispose();
     this.context.removeEventListener?.("statechange", this.onStateChange);
     void this.context.close().catch(() => {});
   }

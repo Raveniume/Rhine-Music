@@ -1,4 +1,5 @@
 import { musicPlatforms } from './music-platform';
+import { equalizerMarkup } from './song-equalizer-panel';
 import { fetchOnline } from './online-debug';
 import { neteaseProvider } from './platform-provider';
 import type { MusicAlbum, MusicTrack, OnlineSongInfo } from './music-types';
@@ -89,7 +90,7 @@ export class MusicSongView {
       <section id="song-info" role="tabpanel" aria-labelledby="song-tab-info" hidden><dl id="song-facts"></dl><p id="song-description" data-song-reveal></p><p id="song-metadata-error" data-song-reveal role="status"></p></section>
       <section id="song-lyric-view" role="tabpanel" aria-labelledby="song-tab-lyrics"><div class="lyric-window"><div id="song-lyrics" role="region" aria-label="同步歌词" tabindex="0"></div></div>
         <div class="lyric-transport">
-          <div class="lyric-order-row"><button type="button" class="lyric-playback-mode" data-action="cycle-playback-mode" aria-label="顺序播放" title="顺序播放">${orderIcons.sequential}</button></div>
+          <div class="lyric-order-row"><button type="button" class="lyric-playback-mode" data-action="cycle-playback-mode" aria-label="顺序播放" title="顺序播放">${orderIcons.sequential}</button>${equalizerMarkup}</div>
           <input class="playback-seek" type="range" min="0" max="1" value="0" step="0.1" aria-label="歌曲播放进度" disabled><div class="song-time"><span data-elapsed data-song-reveal>0:00</span><span data-duration data-song-reveal>${clock(track.duration)}</span></div>
         </div></section>${togetherEnabled ? '<section id="song-together-view" role="tabpanel" aria-labelledby="song-tab-together" hidden></section>' : ''}<p id="song-view-error" data-song-reveal role="status"></p></section>`;
   }
@@ -99,6 +100,7 @@ export class MusicSongView {
     this.reveal.reset();
     this.viewEvents?.abort(); this.viewEvents = new AbortController(); if (this.tab !== "together") this.tab = "lyrics";
     const tabs = document.querySelector<HTMLElement>("#song-view .song-view-tabs");
+    if (tabs) this.mountEffects?.(tabs.parentElement!, this.viewEvents.signal);
     this.tabsResize?.disconnect();
     this.tabsResize = new ResizeObserver(() => this.syncTabIndicator(false));
     if (tabs) this.tabsResize.observe(tabs);
@@ -124,6 +126,8 @@ export class MusicSongView {
       requestAnimationFrame(() => { if (root.isConnected) delete root.dataset.quickSwitch; });
     }
   }
+
+  mountEffects?: (root: HTMLElement, signal: AbortSignal) => void;
 
   selectTab(tab: "info" | "lyrics" | "together") {
     if (this.disposed || tab === this.tab) return;
@@ -163,6 +167,8 @@ export class MusicSongView {
       if (button.dataset.label !== label) { button.innerHTML = `${pausable ? pause : play}<span data-song-reveal>${label}</span>`; button.dataset.label = label; revealChanged = true; }
       button.setAttribute('aria-label', label);
       const order = root.querySelector<HTMLButtonElement>('.lyric-playback-mode')!;
+      const effects = root.querySelector<HTMLButtonElement>('.song-eq-button')!;
+      effects.disabled = state.backend !== 'browser';
       const orderMode = state.playbackMode;
       if (order.dataset.mode !== orderMode) {
         const orderLabel = {sequential: '顺序播放', shuffle: '随机播放', 'repeat-one': '单曲循环'}[orderMode];
@@ -173,12 +179,14 @@ export class MusicSongView {
       const showLyrics = this.tab === "lyrics";
       const viewChanged = root.dataset.songTab !== this.tab;
       if (viewChanged) revealChanged = true;
-      root.querySelector<HTMLElement>('#song-info')!.hidden = this.tab !== 'info';
-      root.querySelector<HTMLElement>('#song-lyric-view')!.hidden = !showLyrics;
-      const together = root.querySelector<HTMLElement>('#song-together-view'); if (together) together.hidden = this.tab !== 'together';
+      if (viewChanged || enteringDetail || revealChanged) {
+        root.querySelector<HTMLElement>('#song-info')!.hidden = this.tab !== 'info';
+        root.querySelector<HTMLElement>('#song-lyric-view')!.hidden = !showLyrics;
+        const together = root.querySelector<HTMLElement>('#song-together-view'); if (together) together.hidden = this.tab !== 'together';
+      }
       if (viewChanged) { root.dataset.songTab = this.tab; this.onTab?.(this.tab); }
       if (root.dataset.lyricsActive !== String(showLyrics)) root.dataset.lyricsActive = String(showLyrics);
-      for (const tab of root.querySelectorAll<HTMLButtonElement>('[data-song-view-tab]')) {
+      if (viewChanged || enteringDetail || revealChanged) for (const tab of root.querySelectorAll<HTMLButtonElement>('[data-song-view-tab]')) {
         const selected = tab.dataset.songViewTab === this.tab;
         tab.setAttribute('aria-selected', String(selected)); tab.tabIndex = selected ? 0 : -1;
       }
@@ -199,7 +207,7 @@ export class MusicSongView {
       if (detailTrack.onlineSource) this.ensure(detailTrack);
     }
     this.setMiniVisible(active && !detailActive);
-    this.mini.dataset.song = state.currentTrack?.id || '';
+    if (this.mini.dataset.song !== (state.currentTrack?.id || '')) this.mini.dataset.song = state.currentTrack?.id || '';
     if (active && state.currentTrack) {
       const track = state.currentTrack, cached = track.onlineSource ? this.cache.get(`${track.onlineSource.provider}:${track.onlineSource.id}`) : undefined;
       this.emitDesktopLyric(track, cached, state.currentTime);
@@ -227,8 +235,9 @@ export class MusicSongView {
       this.paintSeek(input);
       const group = input.parentElement!;
       const elapsed = group.querySelector<HTMLElement>('[data-elapsed]'), duration = group.querySelector<HTMLElement>('[data-duration]');
-      if (elapsed) elapsed.textContent = clock(Number(input.value));
-      if (duration) duration.textContent = clock(matching ? state.duration || state.currentTrack!.duration : selectedDuration);
+      const elapsedText = clock(Number(input.value)), durationText = clock(matching ? state.duration || state.currentTrack!.duration : selectedDuration);
+      if (elapsed && elapsed.textContent !== elapsedText) elapsed.textContent = elapsedText;
+      if (duration && duration.textContent !== durationText) duration.textContent = durationText;
     }
   }
 
@@ -292,7 +301,6 @@ export class MusicSongView {
   }
   private paintLyrics(node: HTMLElement, cached: CachedSong | undefined, time: number, track: MusicTrack) {
     const document = cached?.document;
-    this.emitDesktopLyric(track, cached, time);
     // Plain LRC still uses AMLL's line springs, scale and blur. Word masks only
     // come from real provider timestamps; do not invent syllable timing.
     const useAmll = !!document && document.lines.length > 0;

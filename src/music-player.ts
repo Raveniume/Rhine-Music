@@ -5,6 +5,7 @@ import type { MusicTrack } from "./music-types";
 import { normalizeSongTransition, type SongTransitionMode } from "./music-song-transition.ts";
 import { AudioClockSuspended, BrowserGaplessPlayer } from "./music-browser-gapless.ts";
 import { MusicSpectrum } from './music-spectrum.ts';
+import { readEqualizer, type EqualizerSettings } from './music-equalizer.ts';
 import { queueEntryKey, temporaryTrack, uniqueQueue, refreshPlaybackQueue, type PlaybackOrigin } from './playback-queue.ts';
 
 export const PLAYBACK_MODES = ["sequential", "shuffle", "repeat-one"] as const;
@@ -87,6 +88,13 @@ const uniqueTracks = uniqueQueue;
 export class MusicPlayer {
   private readonly spectrum = new MusicSpectrum();
   private spectrumEnabled = false;
+  private equalizer = readEqualizer();
+  setEqualizer(settings: EqualizerSettings) {
+    this.equalizer = settings;
+    this.gapless?.setEqualizer(settings);
+    this.spectrum.setEqualizer(settings);
+    if (settings.enabled && this.song) this.spectrum.attach(this.song);
+  }
   private spectrumResponsive = false;
   private value: Omit<MusicPlayerState, "transport">;
   private listeners = new Set<Listener>();
@@ -993,7 +1001,7 @@ export class MusicPlayer {
     });
     audio.playbackRate = this.value.playbackRate;
     audio.src = source || `/api/audio/${encodeURIComponent(track.id)}`;
-    if (this.spectrumEnabled) this.spectrum.attach(audio);
+    if (this.spectrumEnabled || this.equalizer.enabled) this.spectrum.attach(audio);
     return audio;
   }
 
@@ -1171,6 +1179,7 @@ export class MusicPlayer {
       this.gapless.setPlaybackRate(this.value.playbackRate);
       // resume() is invoked in this synchronous gesture turn, before any await.
       this.gapless.setSpectrumEnabled(this.spectrumEnabled, this.spectrumResponsive);
+      this.gapless.setEqualizer(this.equalizer);
       const unlocked = this.gapless.unlock();
       await Promise.all([unlocked, this.reconcileBgm()]);
       if (request !== this.operation || this.disposed) return;

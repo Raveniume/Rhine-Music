@@ -111,6 +111,28 @@ async function checkPlaybackRegression() {
   await page.locator('#online-search').fill('fixture');
   await page.locator('#online-search').press('Enter');
   await page.locator('[data-online-track="netease-9000"]').waitFor();
+  await page.locator('[data-online-track="netease-9000"]').click();
+  await page.waitForFunction(() => document.querySelector('#song-view')?.dataset.song === 'netease-9000' && window.rhineMusic.player.playing);
+  await page.waitForFunction(() => window.rhineMusic.player.currentTrack?.id !== 'netease-9000' && window.rhineMusic.player.playing);
+  await page.waitForFunction(() => document.querySelector('#song-view')?.dataset.song === window.rhineMusic.player.currentTrack.id &&
+    window.rhineMusic.selectedAlbum?.tracks[0]?.id === window.rhineMusic.player.currentTrack.id);
+  console.log('Search replacement ended and detail resumed the original shuffled queue', await title.innerText());
+  await page.locator('.song-eq-button').click();
+  const effects = page.locator('#song-eq-panel');
+  await effects.locator('select').selectOption({label:'WH-1000XM6 · 清晰'});
+  assert.ok(await effects.locator('[type=checkbox]').isChecked());
+  const modeButton = await page.locator('.lyric-playback-mode').boundingBox();
+  const effectsButton = await page.locator('.song-eq-button').boundingBox();
+  assert.ok(Math.abs(modeButton.y - effectsButton.y) < 1 && effectsButton.x > modeButton.x + 100);
+  await page.waitForFunction(() => window.rhineMusic.presentation.cameraReady);
+  await page.locator('#album-detail-content h1 .document-redaction-window').waitFor({state:'detached'});
+  await page.screenshot({path:output+'/search-follow-equalizer.png'});
+  await effects.locator('select').press('Escape');
+  await effects.waitFor({state:'hidden'});
+  assert.match(await page.locator('.music-back').innerText(), /返回之前的位置/);
+  await page.locator('.music-back').click();
+  await page.waitForFunction(() => !!window.rhineMusic.selectedAlbum?.playlistCell);
+  await page.locator('[data-action="search"]').first().click();
   await page.locator('[data-search-source="local"]').click();
   assert.equal(await page.locator('#album-search').getAttribute('autocomplete'), 'off');
   await page.locator('#album-search').fill('合成');

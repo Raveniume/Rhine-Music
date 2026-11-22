@@ -25,6 +25,7 @@
   background: var(--page-bg);
   --stage-scale: 1;
 }
+html[data-music-theme="night"], html[data-music-theme="night"] #viewport { background: #08121f; }
 .music-app[data-theme="night"] {
   --ink: #e9eef2;
   --muted: #9caabd;

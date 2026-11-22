@@ -1650,6 +1650,7 @@ export class ArchiveScene {
     } else {
       this.scanTime += dt;
       this.scanBlend *= Math.exp(-dt * 3);
+      if (this.scanBlend < 0.000001) this.scanBlend = 0;
     }
     if (this.looping && !cinematic) this.rebaseCoordinates();
     const chosen = this.cellPosition(this.selectedCell);
@@ -1737,6 +1738,7 @@ export class ArchiveScene {
           idle ? 1 : 0,
           1 - Math.exp(-dt * (idle ? 0.8 : 4)),
         );
+    if (!idle && this.idleGain < 0.000001) this.idleGain = 0;
     this.pulseGain = THREE.MathUtils.lerp(
       this.pulseGain,
       this.targetDetail || this.returnY !== null || aligningCopy ? 0 : 1,
@@ -1762,19 +1764,17 @@ export class ArchiveScene {
           this.laneFocus.value,
         );
       if (musicLibrary && this.musicArrayMode === "realistic") return this.musicRealColumnField(row, lane, time);
-      let height =
-        archiveWave(
+      let height = 0;
+      if (this.scanBlend) height += archiveWave(
           row + this.coordinateOrigin.row,
           lane + this.coordinateOrigin.lane,
           this.scanTime,
-        ) *
-          this.scanBlend +
-        idleWave(
+        ) * this.scanBlend;
+      if (this.idleGain) height += idleWave(
           row + this.coordinateOrigin.row,
           lane + this.coordinateOrigin.lane,
           time,
-        ) *
-          this.idleGain;
+        ) * this.idleGain;
       if (!cinematic && !this.reduced) {
         let ripple = 0;
         for (const p of this.pulses) {

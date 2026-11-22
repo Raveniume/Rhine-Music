@@ -1,4 +1,5 @@
 import { configureSpectrumAnalyser } from './music-flowing-wave.ts';
+import { EqualizerOutput, readEqualizer, type EqualizerSettings } from './music-equalizer.ts';
 
 /** One lazy context for media playback. Analysis is a side branch, so disabling
  * the visualizer never disconnects the audible route or suspends music. */
@@ -11,6 +12,11 @@ export class MusicSpectrum {
   private responsive = false;
   private failed = false;
   private disposed = false;
+  private output?: EqualizerOutput;
+  private equalizer = readEqualizer();
+  setEqualizer(settings: EqualizerSettings) {
+    this.equalizer = settings; this.output?.configure(settings);
+  }
 
   get sampleRate(): number { return this.context?.sampleRate || 48000; }
 
@@ -22,14 +28,14 @@ export class MusicSpectrum {
     else if (this.source) this.connectAnalysis();
   }
   unlock() {
-    if (this.disposed || this.failed || !this.enabled) return;
+    if (this.disposed || this.failed || (!this.enabled && !this.equalizer.enabled)) return;
     try {
       this.context ??= new AudioContext();
       void this.context.resume().catch(() => {});
     } catch { this.failed = true; }
   }
   attach(element: HTMLAudioElement) {
-    if (!this.enabled || this.failed || this.disposed || this.element === element) return;
+    if ((!this.enabled && !this.equalizer.enabled) || this.failed || this.disposed || this.element === element) return;
     // Never route opaque cross-origin media through Web Audio: it becomes mute.
     try { if (new URL(element.src, location.href).origin !== location.origin) return; }
     catch { return; }
@@ -38,9 +44,10 @@ export class MusicSpectrum {
     this.release();
     try {
       const source = this.context.createMediaElementSource(element);
-      source.connect(this.context.destination);
+      this.output = new EqualizerOutput(this.context, source);
       this.source = source; this.element = element;
-      this.connectAnalysis();
+      this.output.configure(this.equalizer);
+      if (this.enabled) this.connectAnalysis();
     } catch { /* Keep ordinary media playback if graph creation is unavailable. */ }
   }
   private connectAnalysis() {
@@ -63,6 +70,7 @@ export class MusicSpectrum {
   }
   release() {
     this.disconnectAnalysis(); this.source?.disconnect();
+    this.output?.dispose(); this.output = undefined;
     this.source = undefined; this.element = undefined;
   }
   dispose() {

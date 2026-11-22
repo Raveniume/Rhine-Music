@@ -6,6 +6,10 @@ export { normalizeWindowDisplayMode } from './window-display-mode';
 export type { WindowDisplayMode } from './window-display-mode';
 
 export const isDesktop = () => "__TAURI_INTERNALS__" in window;
+export function syncWindowBackground(theme: string) {
+  document.documentElement.dataset.musicTheme = theme;
+  if (isDesktop()) void invoke('desktop_window_action', { action: theme === 'night' ? 'background-night' : 'background-day' }).catch(() => {});
+}
 export const consumeFirstLaunch = async () => isDesktop() ? invoke<boolean>('desktop_consume_first_launch') : false;
 export type CloseBehavior = 'ask' | 'tray' | 'exit';
 let closeBehavior: CloseBehavior = 'ask';

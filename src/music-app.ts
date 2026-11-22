@@ -26,6 +26,9 @@ import { MusicPlaybackShortcuts } from './music-playback-shortcuts';
 import { normalizeKeybindings, keybindingsMarkup, mountKeybindingEditor, type MusicKeybindings } from './music-keybindings';
 import { LyricSettingsPreview } from './lyric-settings-preview';
 import { MusicSongView } from './music-song-view';
+import { mountEqualizer } from './song-equalizer-panel';
+import { readEqualizer } from './music-equalizer';
+import { syncWindowBackground } from './desktop';
 import { MusicPlaylistList } from './music-playlist-list';
 import { mountTransportVolume, transportVolumeMarkup } from './music-volume-control';
 import { normalizeMusicArrayMode, type MusicArrayMode } from "./music-array-layout";
@@ -379,6 +382,7 @@ const stage = $("#stage");
 stage.className = "music-app";
 stage.dataset.mode = "archive";
 stage.dataset.theme = preferences.theme;
+syncWindowBackground(preferences.theme);
 stage.style.setProperty("--lyric-area-scale", String(Number(preferences.lyricAreaSize) / 100));
 stage.innerHTML = `
   <div id="three-scene" class="three-scene"></div>
@@ -893,6 +897,7 @@ function setTheme(theme: Theme) {
   if (theme === preferences.theme) return;
   preferences.theme = theme;
   stage.dataset.theme = theme;
+  syncWindowBackground(theme);
   scene?.setTheme(theme, !preferences.reduced);
   viewer?.setTheme(theme);
   document
@@ -1327,7 +1332,7 @@ function modelPosition(position: number, count: number) {
 }
 /** Pending detail/return requests already define the next input boundary. */
 function syncAlbumNavigation() {
-  $('.music-back').textContent = queueView ? '← 返回播放队列' : searchShelfActive ? '← 返回之前的位置' : accountView ? '← 返回歌单' : '← 返回专辑架';
+  $('.music-back').textContent = searchShelfActive && searchReturn ? '← 返回之前的位置' : queueView ? '← 返回播放队列' : accountView ? '← 返回歌单' : '← 返回专辑架';
   if (currentAlbum()?.playlistCell) { syncPlaylistNavigation(); return; }
   const playback = !!records[0]?.album?.playback;
   $('.music-counter .music-eyebrow').textContent = 'ALBUM / SELECT';
@@ -2285,8 +2290,10 @@ function syncPlaybackAlbums(state: MusicPlayerState) {
   if ((!queueActivated && queueShelfLane < 0) || overview || playlistOverviewRequested) { updateQueueControls(); return; }
   if (queueView && !browseLibraryDuringPlayback && !panel) {
     const key = queueEntryKey(state.currentTrack);
-    const index = records.findIndex(record => record.album?.playback?.queueShelf && record.album.playback.entryId === key);
-    if (index >= 0 && index !== navigationSelection()) select(index, undefined, presentation.openingOrDetail);
+    if (records[navigationSelection()]?.album?.playback?.entryId !== key) {
+      const index = records.findIndex(record => record.album?.playback?.queueShelf && record.album.playback.entryId === key);
+      if (index >= 0) select(index, undefined, presentation.openingOrDetail);
+    }
   }
   if (lastQueueSnapshot !== state.queue) {
     lastQueueSnapshot = state.queue;
@@ -2326,6 +2333,11 @@ const together = new ListenTogether(stage, player, notify, async (track, queue) 
   await player.play(track.id, queue);
 });
 const songView = new MusicSongView($('#mini-playback-below'), seconds => player.seek(seconds), () => preferences.reduced, tab => together.show(tab === 'together'), () => preferences.pageTextMask);
+let equalizer = readEqualizer(read('rhine-equalizer', null));
+player.setEqualizer(equalizer);
+songView.mountEffects = (root, signal) => mountEqualizer(root, equalizer, settings => {
+  equalizer = settings; player.setEqualizer(settings); save('rhine-equalizer', settings);
+}, signal);
 const visualizer = new MusicVisualizer(stage, target => player.readSpectrum(target), () => ({
   state: playerState, detail: mode === 'detail' && !playlistDetail && !!document.querySelector('#song-view'), blocked: !!panel || !!viewer?.isOpen, reduced: preferences.reduced, sampleRate: player.spectrumSampleRate,
 }));
@@ -2337,7 +2349,11 @@ const transportVolume = mountTransportVolume($('#transport-volume'), preferences
 });
 lyricSettingsPreview.bindControls(() => panel === 'settings');
 player.subscribe((state) => {
+  const previousTrack = playerState?.currentTrack;
   const trackChanged = playerState?.currentTrack?.id !== state.currentTrack?.id;
+  const followSearch = searchShelfActive && presentation.openingOrDetail && previousTrack &&
+    records[navigationSelection()]?.album?.tracks[0]?.id === previousTrack.id &&
+    queueEntryKey(previousTrack) !== queueEntryKey(state.currentTrack);
   playerState = state;
   together.observe(state);
   overviewUI.setPlayback(state.currentTrack?.id || '', state.playing, state.loading);
@@ -2364,7 +2380,19 @@ player.subscribe((state) => {
   updateSongTransport();
   lyricSettingsPreview.refresh();
   onlineSearch.setPlayback(state.currentTrack?.id, state.playing, state.loading);
-  syncPlaybackAlbums(state);
+  const shelfUpdate = syncPlaybackAlbums(state);
+  if (followSearch && state.currentTrack) {
+    const track = state.currentTrack;
+    void Promise.resolve(shelfUpdate).then(() => {
+      if (!searchShelfActive || !presentation.openingOrDetail || frameDisposed ||
+          queueEntryKey(playerState.currentTrack) !== queueEntryKey(track) ||
+          records[navigationSelection()]?.album?.tracks[0]?.id !== previousTrack.id) return;
+      // Search playback can resume the original playlist, outside the search results.
+      const result = records.findIndex(r => !r.album?.playback?.queueShelf && r.album?.tracks[0]?.id === track.id);
+      const index = result >= 0 ? result : records.findIndex(r => r.album?.playback?.queueShelf && r.album.playback.entryId === queueEntryKey(track));
+      if (index >= 0) select(index, undefined, true);
+    });
+  }
   syncAudioOutputUI();
 });
 

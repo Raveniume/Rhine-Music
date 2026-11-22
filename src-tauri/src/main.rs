@@ -189,6 +189,8 @@ fn desktop_close_decision(
 
 fn apply_window_action(window: WebviewWindow, action: &str) -> Result<(), String> {
     match action {
+        "background-night" => window.set_background_color(Some(tauri::window::Color(8, 18, 31, 255))),
+        "background-day" => window.set_background_color(Some(tauri::window::Color(232, 229, 225, 255))),
         "minimize" => window.minimize(),
         // Maximize uses the Windows work area, leaving the taskbar available.
         "maximize" => {

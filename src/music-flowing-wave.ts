@@ -10,7 +10,8 @@ export function configureSpectrumAnalyser(analyser: AnalyserNode, responsive: bo
 
 // Byte frequency samples encode dB, not linear amplitude. The responsive
 // analyser's wider range avoids clipping strong musical bins to identical 255s.
-const amplitudes = Float32Array.from({ length: 256 }, (_, i) => i === 0 ? 0 : 10 ** ((-90 + i * 80 / 255) / 20));
+const power = Float64Array.from({ length: 256 }, (_, i) =>
+  i === 0 ? 0 : Math.fround(10 ** ((-90 + i * 80 / 255) / 20)) ** 2);
 
 /** Same frequency positions and endpoint easing for every drawing style. */
 export function flowingLevelAt(levels: Float32Array, position: number) {
@@ -28,6 +29,9 @@ export class FlowingWave {
   private readonly energy = new Float32Array(32);
   private readonly velocity = new Float32Array(32);
   private reference = .035;
+  private bandEdges = new Float64Array(this.levels.length + 1);
+  private sampleRate = 0;
+  private binCount = 0;
 
   reset() { this.levels.fill(0); this.energy.fill(0); this.velocity.fill(0); this.reference = .035; }
 
@@ -35,19 +39,22 @@ export class FlowingWave {
     const dt = Number.isFinite(elapsed) ? Math.max(0, Math.min(.15, elapsed)) : 0;
     this.energy.fill(0);
     if (input && input.length > 1 && Number.isFinite(sampleRate) && sampleRate > 0) {
-      const binHz = sampleRate / (input.length * 2);
-      const first = Math.min(input.length - 1, Math.max(1, 60 / binHz));
-      const last = Math.min(input.length, Math.max(first + 1, 12000 / binHz));
+      if (this.binCount !== input.length || this.sampleRate !== sampleRate) {
+        this.binCount = input.length; this.sampleRate = sampleRate;
+        const binHz = sampleRate / (input.length * 2);
+        const first = Math.min(input.length - 1, Math.max(1, 60 / binHz));
+        const last = Math.min(input.length, Math.max(first + 1, 12000 / binHz));
+        for (let i = 0; i < this.bandEdges.length; i++)
+          this.bandEdges[i] = first * (last / first) ** (i / this.energy.length);
+      }
       for (let i = 0; i < this.energy.length; i++) {
-        const start = first * (last / first) ** (i / this.energy.length);
-        const end = first * (last / first) ** ((i + 1) / this.energy.length);
-        let sum = 0;
+        const start = this.bandEdges[i], end = this.bandEdges[i + 1];
+        const low = Math.floor(start), high = Math.min(input.length - 1, Math.ceil(end) - 1);
+        let sum = power[input[low]] * (Math.min(end, low + 1) - start);
         // Integrate fractional bin coverage instead of rounding multiple low
         // bands onto identical whole-bin ranges and producing a flat shelf.
-        for (let j = Math.floor(start); j < Math.ceil(end); j++) {
-          const weight = Math.max(0, Math.min(end, j + 1) - Math.max(start, j));
-          sum += amplitudes[input[Math.min(input.length - 1, j)]] ** 2 * weight;
-        }
+        for (let j = low + 1; j < high; j++) sum += power[input[j]];
+        if (high > low) sum += power[input[high]] * (end - high);
         this.energy[i] = Math.sqrt(sum / (end - start));
       }
     }
