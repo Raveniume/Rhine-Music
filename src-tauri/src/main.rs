@@ -328,7 +328,8 @@ fn start_service(app: &tauri::AppHandle) -> Result<(MusicService, tauri::Url), B
 }
 
 fn main() {
-    if instance_handoff::forward_existing() { return; }
+    let context = tauri::generate_context!();
+    if instance_handoff::forward_existing(&context.config().identifier) { return; }
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             if let Some(window) = app.get_webview_window("main") {
@@ -407,7 +408,7 @@ fn main() {
             });
             Ok(())
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("Rhine Music desktop initialization failed")
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) { app.state::<MusicService>().stop(); }

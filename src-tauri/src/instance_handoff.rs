@@ -2,7 +2,7 @@
 // the same locked 2.5.2 protocol with a deadline. An unresponsive old process
 // must not leave every new click silently blocked before service startup.
 #[cfg(windows)]
-pub fn forward_existing() -> bool {
+pub fn forward_existing(id: &str) -> bool {
     use std::ffi::c_void;
     #[repr(C)]
     struct CopyData { tag: usize, bytes: u32, data: *const c_void }
@@ -14,8 +14,6 @@ pub fn forward_existing() -> bool {
         fn SendMessageTimeoutW(window: isize, message: u32, wparam: usize, lparam: isize, flags: u32, timeout: u32, result: *mut usize) -> isize;
         fn MessageBoxW(window: isize, text: *const u16, title: *const u16, flags: u32) -> i32;
     }
-    let config: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).expect("embedded app config");
-    let id = config["identifier"].as_str().expect("app identifier");
     let wide = |value: &str| value.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
     let class = wide(&format!("{id}-sic"));
     let name = wide(&format!("{id}-siw"));
@@ -36,4 +34,4 @@ pub fn forward_existing() -> bool {
 }
 
 #[cfg(not(windows))]
-pub fn forward_existing() -> bool { false }
+pub fn forward_existing(_: &str) -> bool { false }

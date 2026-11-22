@@ -605,12 +605,14 @@ async function openPlaylistDetail(row: number, song = 0) {
   // fetch continue in parallel, so the detail surface never waits on camera
   // settling before showing useful content.
   renderDetail();
-  const navigation = samePlaylist ? Promise.resolve() : navigatePlaylist(row, song);
+  const onCurrentCover = !overview && presentation.openingOrDetail && currentAlbum()?.playlistCell?.playlistIndex === row;
+  browseLibraryDuringPlayback = true;
+  const navigation = samePlaylist || onCurrentCover ? Promise.resolve() : navigatePlaylist(row, song);
   if (!presentation.openingOrDetail) presentation.open();
   // The playlist is a readable list while the shelf camera is still moving.
   // Do not make opening it depend on the physical cover's readiness gate.
   if (!samePlaylist) {
-    detailTransition.hide(true);
+    // Presentation owns the outgoing animation and its completion callback.
     playlistDecryption.reset($("#album-detail-content"), preferences.reduced || !preferences.pageTextMask);
   }
   $('#music-detail').inert = !!panel;
@@ -979,7 +981,7 @@ async function loadLibrary(force = false, signal?: AbortSignal) {
     refreshing = false;
   }
   clearTimeout(pollTimer);
-  if (frameDisposed || !ready || document.hidden) return;
+  if (frameDisposed || !ready || document.hidden || nativeHidden) return;
   pollTimer = setTimeout(
     () => void loadLibrary(),
     library.scan.running ||
@@ -1859,8 +1861,8 @@ async function prepareOpeningLibrary() {
   stage.classList.toggle('empty-library', !albums.length);
 }
 function rebuildPlaylistGrid() {
-  if (!accountActive || !accountView || !scene || !ready || frameDisposed) return Promise.resolve();
-  if (boot?.active) { playlistRefreshDeferred = true; return Promise.resolve(); }
+  if (!accountActive || !accountView || frameDisposed) return Promise.resolve();
+  if (!scene || !ready || boot?.active) { playlistRefreshDeferred = true; return Promise.resolve(); }
   clearTimeout(playlistRenderTimer);
   const generation = ++playbackVisualGeneration;
   playbackVisualTask = playbackVisualTask.then(async () => {
@@ -1888,6 +1890,7 @@ function rebuildPlaylistGrid() {
     } else if (presentation.phase === 'detail') renderDetail();
     updateSelection(); updateStatus();
     preloadNearbyCovers();
+    if (playlistPlaybackId) followPlaylistPlayback(playerState);
   }).catch(error => notify(`歌单视图未能更新：${(error as Error).message}`));
   return playbackVisualTask;
 }
@@ -1962,6 +1965,7 @@ function syncPlaylistNavigation() {
   $('.open-album').innerHTML = '歌曲详情 <span>↗</span>';
   $('.music-back').textContent = '← 返回歌单';
 }
+let queueWindowTrack: string | undefined;
 let playlistPlayEpoch = 0, playlistQueuePending = false, playlistPlaybackSong = 0;
 function playlistQueueSource(row: number, tracks: readonly import('./music-types').MusicTrack[]) {
   const playlist = playlistLibrary.playlists[row];
@@ -1978,6 +1982,7 @@ async function playPlaylistAt(row: number, song: number) {
     const track = playlistLibrary.track(row, position);
     if (!track) { notify('这首歌曲暂时不可用。'); return; }
     if (playlistPlaybackId !== playlist.id) followedPlaylistTrack = undefined;
+    queueWindowTrack = undefined;
     playlistPlaybackId = playlist.id; playlistPlaybackSong = position;
     queueSource = { type: 'playlist', id: playlist.id, name: playlist.name, position, provider: activeProvider };
     browseLibraryDuringPlayback = false;
@@ -2019,26 +2024,32 @@ async function playPlaylistSong() {
   const cell = currentAlbum()?.playlistCell; if (!cell || !currentAlbum()?.tracks.length) return;
   if (playerState.backend !== 'browser') { notify('当前音频输出不支持在线歌曲。'); return; }
   if (!playerState.currentTrack?.queueEntry && playlistPlaybackId === cell.playlistId && playerState.currentTrack?.id === currentAlbum()?.tracks[0]?.id && !playerState.error && playerState.transport !== 'idle') {
+    browseLibraryDuringPlayback = false;
     if (!playerState.playing) await player.toggle(); return;
   }
   await playPlaylistAt(cell.playlistIndex, cell.songIndex);
 }
 function followPlaylistPlayback(state: MusicPlayerState) {
   if (!playlistPlaybackId || !state.currentTrack || state.currentTrack.queueEntry || state.transport === 'idle') return;
-  const row = playlistLibrary.playlists.findIndex(playlist => playlist.id === playlistPlaybackId);
+  const needsFollow = followedPlaylistTrack !== state.currentTrack.id && !browseLibraryDuringPlayback;
+  if (!needsFollow && (playlistQueuePending || queueWindowTrack === state.currentTrack.id || state.queue.length - state.currentIndex > 25)) return;
   const album = playlistLibrary.albums().find(album => album.playlistCell?.playlistId === playlistPlaybackId && album.tracks[0]?.id === state.currentTrack?.id);
   const cell = album?.playlistCell; if (!cell) return;
   playlistPlaybackSong = cell.songIndex;
   if (followedPlaylistTrack !== state.currentTrack.id) {
-    followedPlaylistTrack = state.currentTrack.id;
     const index = records.findIndex(record => record.id === album.id);
-    if (index >= 0 && accountView && !queueView && !browseLibraryDuringPlayback) select(index, undefined, presentation.openingOrDetail);
+    if (index >= 0 && !libraryRebuilding && accountView && !queueView && !playlistDetail && !browseLibraryDuringPlayback) {
+      followedPlaylistTrack = state.currentTrack.id;
+      if (index !== navigationSelection()) select(index, undefined, presentation.openingOrDetail);
+    }
   }
-  if (playlistQueuePending || state.queue.length - state.currentIndex > 25) return;
+  if (playlistQueuePending || queueWindowTrack === state.currentTrack.id || state.queue.length - state.currentIndex > 25) return;
+  const row = cell.playlistIndex;
   playlistQueuePending = true;
   const generation = playlistPlayEpoch, id = state.currentTrack.id;
   void playlistLibrary.queue(row, cell.songIndex).then(queue => {
     if (generation !== playlistPlayEpoch || !accountActive || playerState.currentTrack?.id !== id || playerState.transport === 'idle') return;
+    queueWindowTrack = id;
     if (queue.map(track => track.id).join(',') !== playerState.queue.filter(track => !track.queueEntry).map(track => track.id).join(',')) player.setQueue(playlistQueueSource(row, queue));
   }).catch(error => { if (accountActive && generation === playlistPlayEpoch) notify((error as Error).message); }).finally(() => { playlistQueuePending = false; });
 }
@@ -2144,6 +2155,8 @@ const playlistManager = new PlaylistManager(stage, async () => {
   if (accountView) await rebuildPlaylistGrid();
 } });
 let playbackVisualKey = '';
+let lastQueueSnapshot: MusicPlayerState['queue'] | undefined;
+let queueCoverKey = '';
 let playbackVisualTask = Promise.resolve();
 let playbackVisualGeneration = 0;
 function projectQueueRow(state = playerState) {
@@ -2275,7 +2288,11 @@ function syncPlaybackAlbums(state: MusicPlayerState) {
     const index = records.findIndex(record => record.album?.playback?.queueShelf && record.album.playback.entryId === key);
     if (index >= 0 && index !== navigationSelection()) select(index, undefined, presentation.openingOrDetail);
   }
-  const key = JSON.stringify([queueActivated, overview, playlistOverviewRequested, state.queue.map(track => [queueEntryKey(track), track.albumId, track.onlineSource?.coverUrl])]);
+  if (lastQueueSnapshot !== state.queue) {
+    lastQueueSnapshot = state.queue;
+    queueCoverKey = JSON.stringify(state.queue.map(track => [queueEntryKey(track), track.albumId, track.onlineSource?.coverUrl]));
+  }
+  const key = String(queueActivated) + queueCoverKey;
   if (key === playbackVisualKey) return playbackVisualTask;
   playbackVisualKey = key;
   const generation = ++playbackVisualGeneration;
@@ -2320,6 +2337,7 @@ const transportVolume = mountTransportVolume($('#transport-volume'), preferences
 });
 lyricSettingsPreview.bindControls(() => panel === 'settings');
 player.subscribe((state) => {
+  const trackChanged = playerState?.currentTrack?.id !== state.currentTrack?.id;
   playerState = state;
   together.observe(state);
   overviewUI.setPlayback(state.currentTrack?.id || '', state.playing, state.loading);
@@ -2342,7 +2360,7 @@ player.subscribe((state) => {
   if (state.transitionWarning && state.transitionWarning !== lastTransitionWarning && !state.error)
     notify(state.transitionWarning);
   lastTransitionWarning = state.transitionWarning || "";
-  updatePlayingRows();
+  if (trackChanged) updatePlayingRows();
   updateSongTransport();
   lyricSettingsPreview.refresh();
   onlineSearch.setPlayback(state.currentTrack?.id, state.playing, state.loading);
@@ -2542,7 +2560,7 @@ function renderSearchPanel() {
   onlineSearch.dispose(); onlineSearch.setLogin(platformLogins[activeProvider]);
   const searchGenres = demo ? demoGenres : library.genres;
   $("#panel-body").innerHTML =
-    `<div class="search-sources" role="group" aria-label="搜索来源"><button data-search-source="network" aria-pressed="${searchSource === "network"}">网络搜索</button><button data-search-source="local" aria-pressed="${searchSource === "local"}">本地音乐</button></div>${searchSource === "network" ? '<div id="online-results"></div>' : `<input class="album-search" id="album-search" type="search" placeholder="专辑、歌曲、歌手、流派…" aria-label="搜索专辑与歌曲"><div class="genre-filters"><button data-filter="" class="active">全部</button>${searchGenres
+    `<div class="search-sources" role="group" aria-label="搜索来源"><button data-search-source="network" aria-pressed="${searchSource === "network"}">网络搜索</button><button data-search-source="local" aria-pressed="${searchSource === "local"}">本地音乐</button></div>${searchSource === "network" ? '<div id="online-results"></div>' : `<input class="album-search" id="album-search" type="search" autocomplete="off" placeholder="专辑、歌曲、歌手、流派…" aria-label="搜索专辑与歌曲"><div class="genre-filters"><button data-filter="" class="active">全部</button>${searchGenres
       .filter((g) => albums.some((a) => a.genreId === g.id))
       .map((g) => `<button data-filter="${esc(g.id)}">${esc(g.name)}</button>`)
       .join("")}</div><div id="album-results"></div>`}`;
@@ -3638,7 +3656,12 @@ function resetFrameTiming() {
   scene?.resetMotionClock(performance.now() / 1000);
   frameTiming.reset();
 }
+let releaseBuffersTimer: ReturnType<typeof setTimeout> | undefined;
 function suspendPage() {
+  clearTimeout(releaseBuffersTimer);
+  if (!frameDisposed) releaseBuffersTimer = setTimeout(() => {
+    if (frameSuspended) scene?.releaseIdleBuffers();
+  }, 3000);
   effects.setHidden(true);
   loadingOpening?.setHidden(true);
   visualizer.setHidden(true);
@@ -3653,7 +3676,9 @@ function resumePage() {
   effects.setHidden(document.hidden || nativeHidden);
   loadingOpening?.setHidden(document.hidden || nativeHidden);
   visualizer.setHidden(document.hidden || nativeHidden);
-  if (frameDisposed || document.hidden || nativeHidden) return;
+  if (frameDisposed || document.hidden || nativeHidden || !frameSuspended) return;
+  clearTimeout(releaseBuffersTimer);
+  scene?.restoreIdleBuffers();
   frameSuspended = false;
   resetFrameTiming();
   if (ready && !frameHandle) frameHandle = requestAnimationFrame(frame);

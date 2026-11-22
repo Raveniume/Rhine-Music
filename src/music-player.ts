@@ -174,8 +174,16 @@ export class MusicPlayer {
     // Intentionally no visibilitychange handler: music must continue in the background.
   }
 
+  private snapshotSource?: readonly MusicTrack[];
+  private queueSnapshot: readonly MusicTrack[] = [];
+
   get state(): MusicPlayerState {
-    return { ...this.value, transport: this.transport, queue: [...this.value.queue] };
+    // Queue edits replace the array. Progress notifications reuse its read-only snapshot.
+    if (this.snapshotSource !== this.value.queue) {
+      this.snapshotSource = this.value.queue;
+      this.queueSnapshot = Object.freeze([...this.value.queue]);
+    }
+    return { ...this.value, transport: this.transport, queue: this.queueSnapshot };
   }
 
   subscribe(listener: Listener): () => void {

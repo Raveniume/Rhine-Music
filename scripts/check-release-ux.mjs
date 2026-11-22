@@ -6,7 +6,8 @@ import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 const desktop=process.env.RHINE_DESKTOP_EXE;
-const output = desktop ? 'artifacts/current-native-ux' : 'artifacts/current-ux';
+const playbackRegression = process.argv.includes('--playback-regression');
+const output = playbackRegression ? 'artifacts/playback-regression' : desktop ? 'artifacts/current-native-ux' : 'artifacts/current-ux';
 await fs.mkdir(output, {recursive:true});
 let server,browser,page,child;
 async function recordTransition(name = 'playlist-transition') {
@@ -48,9 +49,10 @@ if(desktop) {
 }
 page.setDefaultTimeout(90000);
 const errors = [], report = {runtimeChecked:false,scope:desktop?'Windows production WebView2; isolated profile, synthetic data and muted audio':'Real browser WebGL; synthetic account/data, muted, no private library',sizes:[]};
+if (playbackRegression) page.on('console', m => {if (m.type()==='error') console.log(m.text().slice(0,500));});
 page.on('pageerror',e=>errors.push(e.stack));
 await page.addInitScript(()=>{localStorage.setItem('rhine-music-preferences',JSON.stringify({startupOpening:true,reduced:false,sfx:false,theme:'night',quality:'performance'}));});
-const silence=Buffer.alloc(44+8000*2*180);silence.write('RIFF');silence.writeUInt32LE(silence.length-8,4);silence.write('WAVEfmt ',8);silence.writeUInt32LE(16,16);silence.writeUInt16LE(1,20);silence.writeUInt16LE(1,22);silence.writeUInt32LE(8000,24);silence.writeUInt32LE(16000,28);silence.writeUInt16LE(2,32);silence.writeUInt16LE(16,34);silence.write('data',36);silence.writeUInt32LE(silence.length-44,40);
+const silence=Buffer.alloc(44+8000*2*(playbackRegression ? 12 : 180));silence.write('RIFF');silence.writeUInt32LE(silence.length-8,4);silence.write('WAVEfmt ',8);silence.writeUInt32LE(16,16);silence.writeUInt16LE(1,20);silence.writeUInt16LE(1,22);silence.writeUInt32LE(8000,24);silence.writeUInt32LE(16000,28);silence.writeUInt16LE(2,32);silence.writeUInt16LE(16,34);silence.write('data',36);silence.writeUInt32LE(silence.length-44,40);
 const tracks = Array.from({length:120},(_,i)=>({id:`netease-${1000+i}`,title:`合成曲目 ${String(i+1).padStart(3,'0')}`,artist:'测试歌手 / 合作歌手',albumId:`album-${i}`,duration:180,format:'在线音频',browserPlayable:true,onlineSource:{provider:'netease',id:String(1000+i),albumTitle:'合成专辑'}}));
 const fixtureLyrics = Array.from({length:20},(_,i)=>`[00:${String(i*3).padStart(2,'0')}.00]合成歌词第 ${i+1} 行 · 用于检查底部渐隐`).join('\n');
 const wordLyrics = Array.from({length:20},(_,i)=>{
@@ -77,22 +79,60 @@ await page.route('**/api/**',async route=>{
     p.includes('/lyric')?{original:fixtureLyrics}:{};
   await route.fulfill({json}).catch(()=>{});
 });
-try {
-  if(desktop)await page.reload();else await page.goto(server.resolvedUrls.local[0]);
-  await page.locator('.music-app').waitFor();
-  if(desktop) await page.evaluate(()=>window.__TAURI__.core.invoke('desktop_tray_action',{action:'show'}));
-  await page.evaluate(()=>document.addEventListener('click',()=>{
-    window.qaActionAt=performance.now();window.qaPlaylistFrameMs=undefined;
-    requestAnimationFrame(()=>{const p=document.querySelector('#album-detail-content');if(p?.querySelector('.playlist-continuous-list')&&p.getBoundingClientRect().width&&p.closest('#music-detail')?.getAttribute('aria-hidden')==='false')window.qaPlaylistFrameMs=performance.now()-window.qaActionAt;});
-  },true));
-  await page.waitForFunction(()=>!document.querySelector('#music-loading'));
-  report.startup=await page.evaluate(()=>JSON.parse(document.querySelector('#three-scene').dataset.startupPreparation||'{}'));
-  await page.locator('.music-boot-skip').waitFor({state:'visible'});
-  assert.equal(await page.locator('.rhine-loading').count(),0,'Daily startup skips the full loading film');
-  await page.locator('.music-boot-skip').click();
-  await page.waitForFunction(()=>document.querySelector('.music-app').dataset.musicBoot==='done');
-  await page.locator('.open-album').waitFor({state:'visible'});
-  await page.waitForTimeout(1500);
+async function checkPlaybackRegression() {
+  const title = page.locator('#album-detail-content > h1');
+  await page.locator('.open-album').click();
+  await page.waitForFunction(() => window.rhineMusic.player.playing);
+  const first = await page.evaluate(() => window.rhineMusic.player.currentTrack.id);
+  await page.waitForFunction(id => window.rhineMusic.player.currentTrack?.id !== id && window.rhineMusic.player.playing, first);
+  await page.waitForFunction(() => window.rhineMusic.selectedAlbum?.tracks[0]?.id === window.rhineMusic.player.currentTrack.id &&
+    document.querySelector('#song-view')?.dataset.song === window.rhineMusic.player.currentTrack.id);
+  await page.locator('#music-detail[data-transition="open"]').waitFor();
+  console.log('Ended event advanced playback and detail', await title.innerText());
+  await page.locator('[data-action="cycle-playback-mode"]').click();
+  await page.waitForFunction(() => window.rhineMusic.player.playbackMode === 'shuffle');
+  await page.evaluate(() => {window.originalRandom = Math.random; Math.random = () => 0.95;});
+  await page.waitForFunction(() => Number(window.rhineMusic.player.currentTrack?.id.split('-')[1]) > 1100);
+  await page.evaluate(() => {Math.random = window.originalRandom;});
+  await page.waitForFunction(() => window.rhineMusic.presentation.phase === 'detail' &&
+    document.querySelector('#song-view')?.dataset.song === window.rhineMusic.player.currentTrack.id);
+  console.log('Shuffle advanced across playlist pages', await title.innerText());
+  await page.locator('#album-detail-content h1 .document-redaction-window').waitFor({state:'detached'});
+  await page.waitForTimeout(450);
+  await page.screenshot({path:output+'/advanced.png'});
+  await page.locator('#album-detail-content [data-playlist-open]').click();
+  await page.locator('[data-playlist-detail-track="0"]:enabled').waitFor();
+  await page.waitForTimeout(700);
+  await page.screenshot({path:output+'/playlist-from-song.png'});
+  await page.locator('[data-playlist-detail-track="0"]').click();
+  await page.locator('#song-view').waitFor();
+  await page.locator('[data-action="search"]').first().click();
+  assert.equal(await page.locator('#online-search').getAttribute('autocomplete'), 'off');
+  await page.locator('#online-search').fill('fixture');
+  await page.locator('#online-search').press('Enter');
+  await page.locator('[data-online-track="netease-9000"]').waitFor();
+  await page.locator('[data-search-source="local"]').click();
+  assert.equal(await page.locator('#album-search').getAttribute('autocomplete'), 'off');
+  await page.locator('#album-search').fill('合成');
+  await page.locator('#album-search').clear();
+  await page.locator('[data-action="close-panel"]').click();
+  const canvas = page.locator('#three-scene canvas').first();
+  const size = await canvas.evaluate(c => [c.width, c.height]);
+  const before = await page.evaluate(() => ({id:window.rhineMusic.player.currentTrack.id, time:window.rhineMusic.player.currentTime}));
+  if (desktop) await page.evaluate(() => window.__TAURI__.core.invoke('desktop_window_action', {action:'minimize'}));
+  else await page.evaluate(() => window.dispatchEvent(new CustomEvent('rhine-desktop-visibility', {detail:{hidden:true}})));
+  await page.waitForFunction(() => document.querySelector('#three-scene canvas').width <= 4, null, {polling:200, timeout:20000});
+  const minimizedSize = await canvas.evaluate(c => [c.width, c.height]);
+  if (desktop) await page.evaluate(() => window.__TAURI__.core.invoke('desktop_tray_action', {action:'show'}));
+  else await page.evaluate(() => window.dispatchEvent(new CustomEvent('rhine-desktop-visibility', {detail:{hidden:false}})));
+  await page.waitForFunction(w => document.querySelector('#three-scene canvas').width === w, size[0]);
+  assert.deepEqual(await canvas.evaluate(c => [c.width, c.height]), size);
+  await page.waitForFunction(before => window.rhineMusic.player.playing &&
+    (window.rhineMusic.player.currentTrack.id !== before.id || window.rhineMusic.player.currentTime > before.time), before);
+  assert.deepEqual(errors, []);
+  console.log('Passed playlist breadcrumb, search and background buffers', {size, minimizedSize});
+}
+async function checkReleaseUX() {
   if (desktop) {
     const toggle=page.locator('[data-action="toggle-taskbar-lyrics"]');
     await toggle.click();
@@ -387,5 +427,24 @@ try {
   report.runtimeChecked=true;report.playlistEntrances=true;report.errors=errors;
   await fs.writeFile(`${output}/results.json`,JSON.stringify(report,null,2));
   console.log(JSON.stringify({passed:true,sizes:report.sizes.length,wheelFrames:frames.length,playlistEntrances:true}));
+}
+try {
+  if(desktop)await page.reload();else await page.goto(server.resolvedUrls.local[0]);
+  await page.locator('.music-app').waitFor();
+  if(desktop) await page.evaluate(()=>window.__TAURI__.core.invoke('desktop_tray_action',{action:'show'}));
+  await page.evaluate(()=>document.addEventListener('click',()=>{
+    window.qaActionAt=performance.now();window.qaPlaylistFrameMs=undefined;
+    requestAnimationFrame(()=>{const p=document.querySelector('#album-detail-content');if(p?.querySelector('.playlist-continuous-list')&&p.getBoundingClientRect().width&&p.closest('#music-detail')?.getAttribute('aria-hidden')==='false')window.qaPlaylistFrameMs=performance.now()-window.qaActionAt;});
+  },true));
+  await page.waitForFunction(()=>!document.querySelector('#music-loading'));
+  report.startup=await page.evaluate(()=>JSON.parse(document.querySelector('#three-scene').dataset.startupPreparation||'{}'));
+  await page.locator('.music-boot-skip').waitFor({state:'visible'});
+  assert.equal(await page.locator('.rhine-loading').count(),0,'Daily startup skips the full loading film');
+  await page.locator('.music-boot-skip').click();
+  await page.waitForFunction(()=>document.querySelector('.music-app').dataset.musicBoot==='done');
+  await page.locator('.open-album').waitFor({state:'visible'});
+  await page.waitForTimeout(1500);
+  if (playbackRegression) await checkPlaybackRegression();
+  else await checkReleaseUX();
 } catch(error) {await page.screenshot({path:`${output}/failure.png`});console.error(errors);console.error(await page.evaluate(()=>({stage:document.querySelector('.music-app')?.dataset,stats:window.rhineMusic?.stats(),presentation:window.rhineMusic?.presentation?.phase})));throw error;}
 finally {releaseDelayed();await browser.close();await server?.close();child?.kill();}

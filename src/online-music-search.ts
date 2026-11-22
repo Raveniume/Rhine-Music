@@ -46,7 +46,7 @@ export class OnlineMusicSearch {
   dispose() { this.controller?.abort(); this.login.dispose(); this.generation++; this.container = undefined; }
   mount(container: HTMLElement) {
     this.dispose(); this.container = container;
-    container.innerHTML = `<form class="online-search-form"><input id="online-search" class="album-search" type="search" maxlength="100" value="${esc(this.query)}" placeholder="搜索${musicPlatforms[this.login.provider]}歌曲、歌手或专辑…" aria-label="搜索${musicPlatforms[this.login.provider]}" required><button class="primary-button" type="submit">搜索 ↗</button></form><p class="online-search-status" role="status" aria-live="polite"></p><div class="online-search-results"></div><div class="online-search-pages"></div>`;
+    container.innerHTML = `<form class="online-search-form" autocomplete="off"><input id="online-search" autocomplete="off" class="album-search" type="search" maxlength="100" value="${esc(this.query)}" placeholder="搜索${musicPlatforms[this.login.provider]}歌曲、歌手或专辑…" aria-label="搜索${musicPlatforms[this.login.provider]}" required><button class="primary-button" type="submit">搜索 ↗</button></form><p class="online-search-status" role="status" aria-live="polite"></p><div class="online-search-results"></div><div class="online-search-pages"></div>`;
     container.insertAdjacentHTML('afterbegin', '<section class="netease-login"></section>');
     this.login.mount(container.querySelector<HTMLElement>('.netease-login')!);
     container.querySelector("form")!.addEventListener("submit", event => {

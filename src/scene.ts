@@ -1328,8 +1328,23 @@ export class ArchiveScene {
     c.drawImage(this.labelMark, 790, 242, 210, 98);
     this.labelTexture.needsUpdate = true;
   }
+  private buffersReleased = false;
+
+  releaseIdleBuffers() {
+    if (this.disposed || this.buffersReleased) return;
+    this.buffersReleased = true;
+    this.renderer.setSize(1, 1, false);
+    this.composer.setSize(1, 1);
+  }
+
+  restoreIdleBuffers() {
+    if (!this.buffersReleased) return;
+    this.buffersReleased = false;
+    this.resize();
+  }
+
   resize() {
-    if (this.disposed) return;
+    if (this.disposed || this.buffersReleased) return;
     const w = this.container.clientWidth,
       h = this.container.clientHeight;
     const kind = this.container.closest<HTMLElement>("[data-layout]")?.dataset.layout ?? "";
