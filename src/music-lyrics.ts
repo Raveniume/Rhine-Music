@@ -12,6 +12,7 @@ export type LyricSourceFormat = "lrc" | "qrc" | "yrc" | "ttml" | "plain";
 
 export interface LyricDocument {
   lines: AmllLyricLine[];
+  credits: string[];
   sourceFormat: LyricSourceFormat;
   offset: number;
   original: string;
@@ -75,21 +76,11 @@ const elementAttribute = (element: Element, name: string) => {
   return null;
 };
 
-const textContent = (node: Node) => (node.textContent || "").replace(/\s+/g, " ").trim();
-
 const isAuxiliaryElement = (element: Element) => {
   const name = elementName(element);
   if (["translation", "transliteration", "romanization", "romaji"].includes(name)) return true;
   const role = Array.from(element.attributes).find(attribute => (attribute.localName || attribute.name.split(":").pop()) === "role")?.value || "";
   return /translation|transliteration|roman/i.test(role);
-};
-
-const lyricTextContent = (node: Node): string => {
-  if (node.nodeType === 3) return node.nodeValue || "";
-  if (node.nodeType !== 1) return "";
-  const element = node as Element;
-  if (isAuxiliaryElement(element)) return "";
-  return Array.from(element.childNodes).map(lyricTextContent).join("");
 };
 
 /**
@@ -103,38 +94,37 @@ const parseGenericTtml = (source: string): AmllLyricLine[] => {
   if (document.getElementsByTagName("parsererror").length) return [];
   const paragraphs = Array.from(document.getElementsByTagName("p"));
   const lines: AmllLyricLine[] = [];
+  const agents = new Map<string, boolean>();
   for (const paragraph of paragraphs) {
-    const startTime = ttmlTime(elementAttribute(paragraph, "begin"));
-    const explicitEnd = ttmlTime(elementAttribute(paragraph, "end"));
-    const duration = ttmlTime(elementAttribute(paragraph, "dur"));
-    const endTime = explicitEnd || (duration ? startTime + duration : 0);
-    const words: AmllLyricLine["words"] = [];
-    const appendWord = (element: Element) => {
-      const word = textContent(element);
-      if (!word) return;
-      const wordStart = ttmlTime(elementAttribute(element, "begin"), startTime);
-      const wordEnd = ttmlTime(elementAttribute(element, "end"), endTime || wordStart);
-      words.push({ word, startTime: wordStart, endTime: Math.max(wordStart, wordEnd) });
-    };
-    for (const child of Array.from(paragraph.childNodes)) {
-      if (child.nodeType !== 1) continue;
-      const element = child as Element;
-      if (isAuxiliaryElement(element)) continue;
-      if (elementName(element) === "span" && (elementAttribute(element, "begin") || elementAttribute(element, "end"))) appendWord(element);
+    const begin = ttmlTime(elementAttribute(paragraph, "begin"));
+    const end = ttmlTime(elementAttribute(paragraph, "end")) || begin + (ttmlTime(elementAttribute(paragraph, "dur")) || 3000);
+    const agent = elementAttribute(paragraph, "agent");
+    if (agent && !agents.has(agent)) agents.set(agent, agents.size % 2 === 1);
+    const background = Array.from(paragraph.getElementsByTagName("*")).filter(el => elementAttribute(el, "role") === "x-bg");
+    for (const voice of [paragraph, ...background]) {
+      const words: AmllLyricLine["words"] = [];
+      const startTime = ttmlTime(elementAttribute(voice, "begin"), begin);
+      const endTime = ttmlTime(elementAttribute(voice, "end"), end);
+      const visit = (node: Node, start: number, stop: number) => {
+        if (node.nodeType === 3) {
+          const word = node.nodeValue || "";
+          if (word.trim() || word === " ") words.push({word, startTime:start, endTime:Math.max(start, stop)});
+          return;
+        }
+        if (node.nodeType !== 1) return;
+        const el = node as Element;
+        if (isAuxiliaryElement(el) || (el !== voice && elementAttribute(el, "role") === "x-bg")) return;
+        const childStart = ttmlTime(elementAttribute(el, "begin"), start);
+        const childEnd = ttmlTime(elementAttribute(el, "end"), stop);
+        for (const child of Array.from(el.childNodes)) visit(child, childStart, childEnd);
+      };
+      visit(voice, startTime, endTime);
+      if (words.some(word => word.word.trim())) lines.push({
+        words, startTime:words[0].startTime, endTime:words[words.length - 1].endTime,
+        translatedLyric:"", romanLyric:"", isBG:voice !== paragraph || elementAttribute(voice, "role") === "x-bg",
+        isDuet:agent ? agents.get(agent)! : false,
+      });
     }
-    const lineText = lyricTextContent(paragraph).replace(/\s+/g, " ").trim();
-    if (!lineText) continue;
-    const lineEnd = endTime || startTime + 3000;
-    if (!words.length) words.push({ word: lineText, startTime, endTime: lineEnd });
-    lines.push({
-      words,
-      startTime,
-      endTime: Math.max(startTime, lineEnd),
-      translatedLyric: "",
-      romanLyric: "",
-      isBG: false,
-      isDuet: false,
-    });
   }
   return lines;
 };
@@ -162,8 +152,11 @@ const parseSource = (source: string, format: LyricSourceFormat): AmllLyricLine[]
     if (format === "yrc") return parseYrc(source);
     if (format === "qrc") return parseQrc(source);
     if (format === "ttml") {
-      const parsed = parseTTML(source).lines;
-      return parsed.length ? parsed : parseGenericTtml(source);
+      try {
+        const parsed = parseTTML(source).lines;
+        if (parsed.length) return parsed;
+      } catch { /* Try standards-oriented TTML without Apple-specific keys. */ }
+      return parseGenericTtml(source);
     }
     if (format === "lrc") return parseLrcLike(source, { mode: "spl" }).lines;
   } catch {
@@ -174,14 +167,102 @@ const parseSource = (source: string, format: LyricSourceFormat): AmllLyricLine[]
 
 const parseAuxiliary = (source: string) => parseSource(source, "lrc");
 
+// NetEase interleaves display credits with the timed lines. Passing those
+// records to an LRC parser can append the literal JSON to the previous verse.
+function withoutCredits(source: string, credits?: Set<string>) {
+  return source.slice(0, 200000).split(/\r?\n/).filter(raw => {
+    const record = raw.replace(/^\s*(?:\[\d{1,3}:\d{2}(?:[.:]\d+)?\])?\s*/, "");
+    if (!/^\{\s*"(?:t|c)"\s*:/.test(record)) return true;
+    try {
+      const data = JSON.parse(record);
+      if (!Array.isArray(data.c) || !Number.isFinite(data.t)) return true;
+      const text = data.c.map((item: { tx?: unknown } | null) => typeof item?.tx === 'string' ? item.tx : '').join('').trim();
+      if (text && credits && credits.size < 150) credits.add(text);
+    } catch { /* A truncated record at the size limit still isn't sung text. */ }
+    return false;
+  }).join('\n');
+}
+
+function applyVocalLabels(lines: AmllLyricLine[], artist: string) {
+  const performers = artist.split(/\s*[/、&]\s*/).map(name => name.trim()).filter(Boolean);
+  const labels = new Set<string>();
+  for (const line of lines) {
+    for (const match of lineText(line).matchAll(/【([^【】\n]{1,32})】/g)) labels.add(match[1]);
+  }
+  if (!labels.size) return lines;
+  // A short form printed in the lyrics can link a stage name and its alias.
+  const roles = new Map<string, string>();
+  for (const label of labels) {
+    const candidates = performers.filter(name => {
+      if (name === label) return true;
+      for (let len = 2; len <= Math.min(label.length, name.length); len++) {
+        const prefix = label.slice(0, len);
+        if (!name.startsWith(prefix)) break;
+        if (labels.has(prefix)) return true;
+      }
+      return false;
+    });
+    if (candidates.length === 1) roles.set(label, candidates[0]);
+  }
+  const sides = new Map<string, boolean>();
+  let duet = false, background = false;
+  const result: AmllLyricLine[] = [];
+  for (const line of lines) {
+    const text = lineText(line);
+    const marks = [...text.matchAll(/【([^【】\n]{1,32})】/g)].filter(m =>
+      roles.has(m[1]) || /^(合|合唱|齐唱|和声|伴唱)$/.test(m[1]));
+    if (!marks.length) {
+      result.push({ ...line, isDuet: duet || line.isDuet, isBG: background || line.isBG });
+      continue;
+    }
+    // With only a line timestamp, two exchanges share one cue. Keep their
+    // labels readable together instead of guessing when the second voice enters.
+    const sharedCue = line.words.length === 1 && marks.length > 1;
+    const fragments: AmllLyricLine[] = [];
+    let wordIndex = 0, offset = 0;
+    const slice = (start: number, end: number) => {
+      if (sharedCue || start >= end || !text.slice(start, end).trim()) return;
+      const words: AmllLyricLine["words"] = [];
+      while (wordIndex < line.words.length && offset < end) {
+        const word = line.words[wordIndex];
+        const part = word.word.slice(Math.max(0, start - offset), end - offset);
+        if (part) words.push({ ...word, word: part });
+        if (offset + word.word.length > end) break;
+        offset += word.word.length;
+        wordIndex++;
+      }
+      fragments.push({ ...line, words, startTime: words[0].startTime, endTime: words[words.length-1].endTime,
+        isDuet: duet || line.isDuet, isBG: background || line.isBG });
+    };
+    let start = 0;
+    for (const mark of marks) {
+      slice(start, mark.index!);
+      const role = roles.get(mark[1]);
+      background = /^(和声|伴唱)$/.test(mark[1]);
+      if (role) {
+        if (!sides.has(role)) sides.set(role, sides.size % 2 === 1);
+        duet = sides.get(role)!;
+      } else if (!background) duet = false;
+      start = mark.index! + mark[0].length;
+    }
+    slice(start, text.length);
+    if (sharedCue) result.push(line);
+    else fragments.forEach((fragment, index) => result.push(index ? {...fragment, translatedLyric:'', romanLyric:''} : fragment));
+    if (fragments.length && background) background = false;
+  }
+  return result;
+}
+
 const auxiliaryByStart = (lines: AmllLyricLine[]) => new Map(
   lines.map(line => [Math.round(line.startTime), line.words.map(word => word.word).join("").trim()]),
 );
 
 /** Convert NetEase lyric payloads into the AMLL line/word model. */
-export function parseLyricDocument(payload: LyricPayload = {}): LyricDocument {
+export function parseLyricDocument(payload: LyricPayload = {}, artist = ""): LyricDocument {
   const offsetMs = finite(payload.offset) * 1000;
-  const candidates = [["yrc", payload.yrc], ["qrc", payload.qrc], ["ttml", payload.ttml], ["lrc", payload.original]] as const;
+  const credits = new Set<string>();
+  const original = withoutCredits(payload.original || "", credits);
+  const candidates = [["ttml", payload.ttml], ["yrc", withoutCredits(payload.yrc || "", credits)], ["qrc", payload.qrc], ["lrc", original]] as const;
   let source = "", sourceFormat: LyricSourceFormat = "plain", lines: AmllLyricLine[] = [];
   for (const [format, value] of candidates) {
     if (!value?.trim()) continue;
@@ -190,8 +271,8 @@ export function parseLyricDocument(payload: LyricPayload = {}): LyricDocument {
     if (parsed.length) { source = value; sourceFormat = format; lines = parsed; break; }
   }
   const translatedText = sourceFormat === 'yrc' && payload.ytranslated?.trim() ? payload.ytranslated : payload.translated || "";
-  const translated = auxiliaryByStart(normalizeLines(parseAuxiliary(translatedText), offsetMs));
-  const romanized = auxiliaryByStart(normalizeLines(parseAuxiliary(payload.yromanized || payload.romanized || ""), offsetMs));
+  const translated = auxiliaryByStart(normalizeLines(parseAuxiliary(withoutCredits(translatedText)), offsetMs));
+  const romanized = auxiliaryByStart(normalizeLines(parseAuxiliary(withoutCredits(payload.yromanized || payload.romanized || "")), offsetMs));
   if (lines.length) {
     lines = lines.map((line, index) => {
       const key = Math.round(line.startTime);
@@ -212,7 +293,8 @@ export function parseLyricDocument(payload: LyricPayload = {}): LyricDocument {
     });
   }
   return {
-    lines,
+    lines: payload.instrumental ? [] : sourceFormat === "ttml" ? lines : applyVocalLabels(lines, artist),
+    credits: [...credits],
     sourceFormat,
     offset: finite(payload.offset),
     original: payload.original || source,
@@ -229,11 +311,12 @@ function lineText(line: AmllLyricLine) {
 }
 
 export function lyricDocumentToLegacyLines(document: LyricDocument): LyricLine[] {
-  return document.lines.map(line => ({
+  const foreground = document.lines.filter(line => !line.isBG);
+  return (foreground.length ? foreground : document.lines).map(line => ({
     time: line.startTime / 1000,
     text: lineText(line),
     translation: line.translatedLyric || undefined,
-  }));
+  })).sort((a,b) => a.time - b.time);
 }
 
 /** Standard LRC: multiple timestamps, decimal precision, offsets and untimed text. */
@@ -253,7 +336,7 @@ export function parseLyrics(source: string, translated = ''): LyricLine[] {
     }
     return result.sort((a, b) => a.time - b.time).slice(0, 4000);
   };
-  const lines = parse(source), translations = parse(translated);
+  const lines = parse(withoutCredits(source)), translations = parse(withoutCredits(translated));
   const byTime = new Map(translations.map(line => [Math.round(line.time * 100), line.text]));
   return lines.map(line => ({ ...line, translation: byTime.get(Math.round(line.time * 100)) }));
 }
@@ -268,6 +351,6 @@ export function lyricIndex(lines: readonly LyricLine[], time: number) {
 }
 
 export function untimedLyrics(source: string) {
-  return source.slice(0, 200000).split(/\r?\n/).filter(line => !/^\[(?:ar|ti|al|by|offset|re|ve):/i.test(line))
+  return withoutCredits(source).split(/\r?\n/).filter(line => !/^\[(?:ar|ti|al|by|offset|re|ve):/i.test(line))
     .map(line => line.replace(/\[[^\]]*\]/g, '').trim()).filter(Boolean).slice(0, 4000).join('\n');
 }

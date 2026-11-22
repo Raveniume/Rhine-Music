@@ -185,8 +185,9 @@
 .update-confirm-dialog h2 { margin: 10px 0 12px; font-size: 22px; }
 .update-confirm-dialog p { margin: 0; line-height: 1.7; color: var(--muted); }
 .update-confirm-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:24px; }
-.update-confirm-actions button { min-height:36px; padding:8px 14px; border:1px solid var(--line); background:transparent; color:var(--ink); }
-.update-confirm-actions .primary-button { border-color:var(--ink); background:var(--ink); color:var(--page-bg); }
+.update-confirm-actions button { min-height:38px; padding:8px 16px; font-family:inherit; font-size:14px; font-weight:600; line-height:1.4; border:1px solid var(--line); background:transparent; color:var(--ink); }
+.update-confirm-actions [data-update-choice="confirm"] { border-color:var(--ink); background:var(--ink); color:var(--page-bg); }
+#song-facts .song-credits { grid-column:1 / -1; white-space:pre-line; }
 .music-detail:has(#song-view) .detail-overline { font-size: 12px; letter-spacing: 1.2px; }
 .music-detail:has(#song-view) > #album-detail-content > .detail-artist { font-size: 16px; line-height:1.45; }
 .music-detail:has(#song-view) .song-view-heading { min-height: 28px; }

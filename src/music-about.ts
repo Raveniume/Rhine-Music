@@ -91,7 +91,7 @@ function askUpdate(message: string) {
     document.querySelector<HTMLElement>('.update-confirm-scrim')?.remove();
     const scrim = document.createElement('div');
     scrim.className = 'update-confirm-scrim';
-    scrim.innerHTML = `<section class="update-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="update-confirm-title"><small>RHINE MUSIC / UPDATE</small><h2 id="update-confirm-title">发现新版本</h2><p></p><div class="update-confirm-actions"><button type="button" data-update-choice="cancel">稍后</button><button type="button" class="primary-button" data-update-choice="confirm">下载并安装</button></div></section>`;
+    scrim.innerHTML = `<section class="update-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="update-confirm-title"><small>RHINE MUSIC / UPDATE</small><h2 id="update-confirm-title">发现新版本</h2><p></p><div class="update-confirm-actions"><button type="button" data-update-choice="cancel">稍后</button><button type="button" data-update-choice="confirm">下载并安装</button></div></section>`;
     scrim.querySelector('p')!.textContent = message;
     const previousFocus = document.activeElement as HTMLElement | null;
     document.body.append(scrim);

@@ -283,6 +283,9 @@ export class MusicSongView {
       ['来源', source ? musicPlatforms[source.provider] : "本地音乐"],
     ];
     root.querySelector('#song-facts')!.innerHTML = fields.map(([label, value]) => `<div><dt><span data-song-reveal>${esc(label)}</span></dt><dd><span data-song-reveal>${esc(value)}</span></dd></div>`).join('');
+    if (cached?.document?.credits.length) {
+      root.querySelector('#song-facts')!.insertAdjacentHTML('beforeend', `<div class="song-credits"><dt>制作人员</dt><dd>${esc(cached.document.credits.join('\n'))}</dd></div>`);
+    }
     root.querySelector('#song-description')!.textContent = info?.album.description || '';
     const error = root.querySelector<HTMLElement>('#song-metadata-error')!;
     error.textContent = cached?.error || info?.metadataError || '';
@@ -405,7 +408,7 @@ export class MusicSongView {
         const now = Date.now();
         // A metadata TTL refresh must not rebuild the same lyric document or
         // replay its entry masks while the user is listening / scrolling.
-        const document = sameLyrics ? previous?.document : lyrics.instrumental ? undefined : parseLyricDocument(lyrics);
+        const document = sameLyrics ? previous?.document : parseLyricDocument(lyrics, info.track.artist || track.artist);
         this.cache.delete(id); this.cache.set(id, { info, at: now, lyricAt: sameLyrics ? previous!.lyricAt : now,
           document, lines: sameLyrics ? previous!.lines : document ? lyricDocumentToLegacyLines(document) : parseLyrics(lyrics.original, lyrics.translated) });
       } catch (error) {

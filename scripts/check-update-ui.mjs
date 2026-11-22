@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
 const server = await createServer({ logLevel: 'error', server: { host: '127.0.0.1', port: 0, watch: { ignored: ['**/src-tauri/**','**/artifacts/**','**/release/**','**/desktop-runtime/**'] } } });
@@ -11,12 +12,20 @@ try {
     await page.route('https://api.github.com/**', route => route.fulfill({ json: release }));
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/`);
     await page.evaluate(async () => {
+      await Promise.all(['/src/style.css', '/src/music.css', '/src/music-theme.css', '/src/music-song-view.css'].map(path => import(path)));
       const module = await import('/src/music-about.ts');
       document.body.innerHTML = module.aboutMarkup('0.4.13');
       window.testUpdate = () => module.checkForUpdates('0.4.13');
     });
     await page.evaluate(() => { void window.testUpdate(); });
     if (platform.startsWith('Windows')) {
+      await page.locator('.update-confirm-dialog').waitFor();
+      const labels = await page.locator('.update-confirm-actions button').evaluateAll(buttons =>
+        buttons.map(button => [getComputedStyle(button).fontSize, getComputedStyle(button).fontWeight, button.offsetHeight]));
+      assert.deepEqual(labels[0], labels[1]);
+      assert.equal(labels[0][0], '14px');
+      await fs.mkdir('artifacts/update-ui', {recursive:true});
+      await page.locator('.update-confirm-dialog').screenshot({path:'artifacts/update-ui/dialog.png'});
       await page.locator('[data-update-choice="cancel"]').click();
       assert.equal(await page.locator('.update-confirm-scrim').count(), 0);
       await page.evaluate(() => { void window.testUpdate(); void window.testUpdate(); });

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DOMParser } from '@xmldom/xmldom';
-import { parseLyricDocument, parseLyrics, lyricIndex } from '../src/music-lyrics.ts';
+import { parseLyricDocument, parseLyrics, lyricIndex, untimedLyrics } from '../src/music-lyrics.ts';
 
 globalThis.DOMParser = DOMParser;
 
@@ -65,3 +65,32 @@ test('enhanced translation follows the word-timed line rather than the older LRC
   assert.equal(document.lines[0].translatedLyric, 'Hello');
 });
 
+
+test('NetEase credit records stay out of all lyric surfaces', () => {
+  const credit = JSON.stringify({t:214504,c:[{tx:'和声编录: '},{tx:'测试歌手',li:'unused'}]});
+  const original = '[00:01]主唱\n' + credit;
+  const doc = parseLyricDocument({original, yrc:credit});
+  assert.deepEqual(doc.credits,['和声编录: 测试歌手']);
+  assert.deepEqual(doc.lines.map(l=>l.words.map(w=>w.word).join('')),['主唱']);
+  assert.equal(untimedLyrics(original),'主唱');
+  assert.equal(untimedLyrics(credit),'');
+});
+
+test('duet labels select a side and retain the original syllable clock across a handoff', () => {
+  const yrc = '[0,100](0,100,0)【甲方】\n[100,900](100,500,0)唱(600,400,0)句\n[1000,700](1000,100,0)【甲方】(1100,200,0)前(1300,20,0)【乙(1320,20,0)方】(1340,360,0)后\n[1700,300](1700,300,0)【合】齐唱';
+  const doc = parseLyricDocument({yrc},'乙方 / 甲方');
+  assert.deepEqual(doc.lines.map(l=>[l.words.map(w=>w.word).join(''),l.startTime,l.isDuet]),[
+    ['唱句',100,false],['前',1100,false],['后',1340,true],['齐唱',1700,false]
+  ]);
+  const shared = '【甲方】前 【乙方】后';
+  assert.equal(parseLyricDocument({original:'[00:01]'+shared},'甲方 / 乙方').lines[0].words[0].word,shared);
+  assert.equal(parseLyricDocument({original:'[00:01]【序章】'},'甲方 / 乙方').lines[0].words[0].word,'【序章】');
+});
+
+test('generic TTML preserves backing voices and their lead singer alignment', () => {
+  const ttml = '<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata"><body><p ttm:agent="a" begin="1s" end="2s">One</p><p ttm:agent="b" begin="3s" end="6s">Two<span ttm:role="x-bg"><span begin="4s" end="5s">Echo</span></span></p></body></tt>';
+  const doc = parseLyricDocument({ttml,original:'[00:01]One'});
+  assert.deepEqual(doc.lines.map(l=>[l.words[0].word,l.startTime,l.isDuet,l.isBG]),[
+    ['One',1000,false,false],['Two',3000,true,false],['Echo',4000,true,true]
+  ]);
+});
