@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { collectNativeLicenses } from './collect-native-licenses.mjs';
 const name = process.env.RHINE_PACKAGE_NAME || 'Rhine-Music-Windows';
 if (!/^Rhine-Music-Windows(?:-[A-Za-z0-9-]+)?$/.test(name)) throw new Error('Invalid portable folder name');
 const output = path.resolve('release', name);
@@ -23,6 +24,9 @@ await fs.copyFile('README.windows.md', path.join(output, 'README.txt'));
 await fs.copyFile('LICENSE', path.join(output, 'LICENSE'));
 await fs.copyFile('PRIVACY.md', path.join(output, 'PRIVACY.md'));
 await fs.copyFile('NOTICE.md', path.join(output, 'NOTICE.md'));
+if (process.env.VITE_PUBLIC_RELEASE === '1') {
+  await collectNativeLicenses(path.join(output, 'third-party', 'native'));
+}
 await fs.copyFile('README.original.md', path.join(output, 'README.original.md'));
 await fs.mkdir(path.join(output, 'docs'), { recursive: true });
 for (const [source, target] of extraNotices) await fs.copyFile(source, path.join(output, target));
