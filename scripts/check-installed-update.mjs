@@ -10,7 +10,7 @@ const exe = process.env.RHINE_DESKTOP_EXE ? path.resolve(process.env.RHINE_DESKT
 const expected = process.env.RHINE_UPDATE_EXPECTED;
 const verifyInstalled = process.env.RHINE_UPDATE_VERIFY_INSTALLED === '1';
 if (!exe || !/^\d+\.\d+\.\d+$/.test(expected || '')) throw Error('Set RHINE_DESKTOP_EXE and RHINE_UPDATE_EXPECTED. This installs the actual GitHub update.');
-const output = path.resolve('artifacts/update-verification');
+const output = path.resolve('artifacts/update-verification', expected);
 await fs.mkdir(output, { recursive: true });
 const data = path.join(output, 'isolated-data'), profile = path.join(output, 'isolated-webview');
 await fs.mkdir(data, { recursive: true });
@@ -39,10 +39,10 @@ let { browser, page } = await connect();
 page.setDefaultTimeout(120000);
 const report = verifyInstalled ? JSON.parse(await fs.readFile(path.join(output, 'in-app-update.json'), 'utf8')) : { runtimeChecked: false, sourceVersion: source.version, targetVersion: expected, mockedNetwork: false, scope: 'Installed Windows application; actual GitHub download, silent installer, automatic restart; isolated data and muted audio' };
 async function about(initialize = false) {
+  await page.evaluate(() => window.__TAURI__.core.invoke('desktop_tray_action', { action: 'show' }));
   await page.waitForFunction(() => !!window.rhineMusic);
   await page.evaluate(initialize => {
     if (initialize) {
-      localStorage.setItem('rhine-music-preferences', JSON.stringify({ startupOpening: false, theme: 'night', sfx: false, quality: 'performance' }));
       localStorage.setItem('rhine-update-test-sentinel', 'preserve-webview-data');
     }
     document.querySelector('.music-boot-skip')?.click();
@@ -54,6 +54,13 @@ async function about(initialize = false) {
   await page.evaluate(() => document.querySelector('.music-boot-skip')?.click());
   await page.waitForFunction(() => !['running', 'revealing'].includes(document.querySelector('.music-app')?.dataset.musicBoot));
   await page.locator('[data-action="settings"]').first().click();
+  if (initialize) {
+    await page.locator('[data-category="appearance"]').click();
+    await page.locator('#follow-system-theme').uncheck();
+    await page.locator('.theme-cards button[data-theme="night"]').click();
+    await page.waitForFunction(() => document.querySelector('#stage')?.dataset.theme === 'night' &&
+      JSON.parse(localStorage.getItem('rhine-music-preferences') || '{}').theme === 'night');
+  }
   await page.locator('[data-category="about"]').click();
 }
 try {
